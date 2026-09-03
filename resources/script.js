@@ -235,35 +235,9 @@
     //==========================
     
     async getResources(resources) {
-      const tFolders = performance.now();
-      // get folders
-      const folders = await this.dapp.$axios.$get(`/folders`);
-      console.log(`[perf] getResources: GET /folders took ${(performance.now() - tFolders).toFixed(0)}ms (${folders.length} folders)`);
-      const folderId = folders.find(folder => folder.name == "smpl_resources")?.id;
-
-      if (folderId) {
-        const tFiles = performance.now();
-        const files = await this.dapp.$axios.$get(`/folders/${folderId}/files`);
-        console.log(`[perf] getResources: GET /folders/${folderId}/files took ${(performance.now() - tFiles).toFixed(0)}ms (${files.length} files)`);
-
-        // Récupérer tous les liens de téléchargement EN PARALLÈLE plutôt qu'un par un —
-        // c'était la première cause de lenteur perçue de l'écran de chargement (7
-        // allers-retours réseau strictement séquentiels au lieu d'un seul lot concurrent).
-        const tLinks = performance.now();
-        await Promise.all(resources.map(async resource => {
-          const fileId = files.find(file => file.name == resource.name)?.id;
-
-          if (fileId) {
-            const link = await this.dapp.$axios.$get(`/files/download-link/${fileId}`);
-            this.resources[resource.key] = link.link.replace("smia_chuv", "chuv").replace("http://", "https://");
-          } else {
-            await this.$toastNotifier.notifyError('Missing file: ' + resource.name);
-          }
-        }));
-        console.log(`[perf] getResources: ${resources.length} download-link fetches (parallel) took ${(performance.now() - tLinks).toFixed(0)}ms`);
-      } else {
-        await this.$toastNotifier.notifyError('Missing folder: smpl_resources');
-      }
+      resources.forEach(resource => {
+        this.resources[resource.key] = `/vendor/smpl/${resource.name}`;
+      });
     },
     
     async getRouteURLByName(name) {
