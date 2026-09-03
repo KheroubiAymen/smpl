@@ -4,6 +4,7 @@ namespace SwissDidata\Smpl;
 
 use Didata\Packages\installer\Package;
 use Didata\Packages\installer\PackageInstaller;
+use Illuminate\Support\Facades\Artisan;
 
 class SmplPackage extends PackageInstaller
 {
@@ -26,5 +27,29 @@ class SmplPackage extends PackageInstaller
                 'template'  => __DIR__.'/../resources/config-template.xml',
                 'js'        => __DIR__.'/../resources/config-script.js',
             ]);
+    }
+
+    public function afterBoot(): void
+    {
+        $this->autoSync();
+    }
+
+    private function autoSync(): void
+    {
+        // Re-sync plugin content in DB whenever the JS file changes.
+        // Uses DiData's own artisan command — no direct SQL.
+        $hash     = md5_file(__DIR__.'/../resources/script.js');
+        $flagFile = storage_path('app/smpl_synced_'.$hash);
+
+        if (file_exists($flagFile)) {
+            return;
+        }
+
+        try {
+            Artisan::call('marketplace:sync-contributions');
+            touch($flagFile);
+        } catch (\Throwable $e) {
+            // Command not available yet (fresh install, migrations pending) — retry next request.
+        }
     }
 }
