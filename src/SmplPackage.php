@@ -18,7 +18,20 @@ class SmplPackage extends PackageInstaller
                 'icon'      => ['code' => 'biotech', 'color' => '#0072CE'],
                 'template'  => __DIR__.'/../resources/template.xml',
                 'js'        => __DIR__.'/../resources/script.js',
+            ])
+            ->hasModulePlugin([
+                'name'      => 'SMPL Config',
+                'meta_data' => ['module_name' => 'smpl_config'],
+                'icon'      => ['code' => 'settings', 'color' => '#0072CE'],
+                'template'  => __DIR__.'/../resources/config-template.xml',
+                'js'        => __DIR__.'/../resources/config-script.js',
             ]);
     }
 
+    public function afterBoot(): void
+    {
+        $this->publishes([
+            __DIR__.'/../resources/public' => public_path('vendor/smpl'),
+        ], 'smpl-public');
+    }
 }

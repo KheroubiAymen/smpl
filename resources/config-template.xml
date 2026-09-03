@@ -1,0 +1,1078 @@
+<svg :width="width" :height="height" :style="{ marginLeft: svgOffsetLeft + 'px' }">
+	<g id="frameLayer" class="layer"></g>
+	<g id="batchLayer" class="layer"></g>
+	<g id="linkLayer" class="layer"></g>
+	<g id="lineLayer" class="layer"></g>
+	<g id="nodeLayer" class="layer"></g>
+</svg>
+
+<div v-if="loading" class="config-loading-overlay">
+  <div class="config-loading-bg"></div>
+  <div class="config-loading-content">
+    <div class="config-loading-mark">
+      <svg viewBox="0 0 48 48" width="60" height="60" aria-hidden="true">
+        <rect x="4" y="4" width="27" height="27" rx="8" fill="#0072CE"/>
+        <rect x="17" y="17" width="27" height="27" rx="8" fill="#00C389" opacity="0.92"/>
+      </svg>
+    </div>
+    <div class="config-loading-brand">SMPL <span class="config-loading-brand-sub">config</span></div>
+    <div class="config-loading-tagline">Workflow builder</div>
+    <div class="config-progress-bar-container">
+      <div class="config-progress-bar">
+        <div class="config-progress-fill" :style="{ width: loadingProgress + '%' }"></div>
+      </div>
+      <div class="config-progress-pct">{{ loadingProgress }}%</div>
+    </div>
+    <div class="config-progress-message">
+      <span class="config-progress-dot"></span>
+      {{ loadingMessage }}
+    </div>
+    <div class="config-loading-version">v{{ appVersion }}</div>
+  </div>
+</div>
+
+<!-- Side bar de navigation entre workflows — remplace le dropdown, groupé par
+     étude, rétractable (fermé par défaut). Le premier workflow se charge
+     automatiquement, plus d'écran de sélection intermédiaire. Masquée
+     pendant qu'un modal est ouvert (évite les conflits de superposition). -->
+<div v-if="!formIdToEdit &amp;&amp; !loadedForms &amp;&amp; !workflowWizard &amp;&amp; !batchFormEntity" class="dd-sidebar" :class="{ 'dd-sidebar-collapsed': sidebarCollapsed }">
+  <div class="dd-sidebar-header">
+    <span v-if="!sidebarCollapsed" class="dd-sidebar-title">Workflows</span>
+    <span v-if="!sidebarCollapsed" class="dd-sidebar-pin" :class="{ active: sidebarPinned }"
+      :title="sidebarPinned ? 'Unpin sidebar' : 'Pin sidebar open'" @click="toggleSidebarPin()">📌</span>
+    <span class="dd-sidebar-toggle" @click="sidebarCollapsed = !sidebarCollapsed">{{ sidebarCollapsed ? '»' : '«' }}</span>
+  </div>
+  <div v-if="!sidebarCollapsed" class="dd-sidebar-body">
+    <div class="dd-sidebar-new" @click="openNewWorkflowForm()">+ New workflow</div>
+    <div class="dd-search-input dd-sidebar-search">
+      <span class="dd-search-icon">⌕</span>
+      <input v-model="sidebarSearch" type="text" placeholder="Search...">
+    </div>
+    <div class="dd-sidebar-sort">
+      <span :class="{ active: sidebarSortField === 'name' }" @click="toggleSidebarSort('name')">Name<template v-if="sidebarSortField === 'name'">{{ sidebarSortDir === 'desc' ? ' ↓' : ' ↑' }}</template></span>
+      <span :class="{ active: sidebarSortField === 'date' }" @click="toggleSidebarSort('date')">Date<template v-if="sidebarSortField === 'date'">{{ sidebarSortDir === 'desc' ? ' ↓' : ' ↑' }}</template></span>
+    </div>
+    <!-- Seule cette liste défile — nouveau workflow/recherche/tri restent fixes en haut. -->
+    <div class="dd-sidebar-list">
+      <div v-if="sortedSidebarWorkflows.length === 0" class="dd-sidebar-empty">No match.</div>
+      <div v-for="wf in sortedSidebarWorkflows" :key="wf.id" class="dd-sidebar-item" :class="{ active: workflow &amp;&amp; workflow.id == wf.id }"
+        @click="selectWorkflow(wf.id)">
+        <span class="dd-sidebar-star" :class="{ active: favoriteWorkflowIds.includes(wf.id) }"
+          @click="toggleFavoriteWorkflow(wf.id, $event)">{{ favoriteWorkflowIds.includes(wf.id) ? '★' : '☆' }}</span>
+        <span class="dd-sidebar-item-label">{{ wf.smpl_label }}</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="developpedBySBP">
+</div>
+
+
+<div id="toolbar" style="
+position: fixed; 
+top: 56px; 
+left: 0; 
+z-index: 1; 
+width: 100%; 
+overflow: hidden;
+padding: 15px 0 15px 0;
+">
+</div>
+
+<div v-if="formIdToEdit || loadedForms || stepCustomViewPopup || workflowWizard || batchFormEntity" id="cache" style="
+    position: fixed;
+    width:100%;
+    height:100%;
+    top:0;
+    left:0;
+	z-index: 5;
+	background-color: rgba(4, 30, 66, 0.55);"></div>
+
+<!-- Form to fill -->
+<div v-if="loadedForms" style="position: fixed;
+	top: 56px;
+	left: 0;
+	z-index: 10;
+	width: 100%;
+	height: calc(100% - 56px);
+	background-color: #ffffff;
+    box-sizing: border-box;
+    border-top: 1px solid var(--dd-gray-200);
+    display: flex;
+    flex-direction: column;">
+	<div style="flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; box-sizing: border-box; padding: 10px;">
+	<h3 v-if="forms[0].title" style="margin-bottom: 20px; margin-left: 10px; font-size: 2em;"> {{forms[0].title}} </h3>
+	<EntityUpdateForm v-if="forms[0].entityToUpdate" v-for="form in forms" :key="form.id"
+		:ref="`formRendering${form.id}`" :form="form.form" :entityToUpdate="form.entityToUpdate"
+		:with-submit-btn="false" @form-submitted="formSubmitted(form)"/>
+	<EntitiesCreatorForm v-else v-for="form in forms" :key="form.id" :ref="`formRendering${form.id}`" :form="form.form"
+		:with-submit-btn="false" :defaultEntity="form.defaultEntity" @form-submitted="formSubmitted(form)"
+		@entity-created="(e) => onEntityCreated(e, form)"
+		@changed-value="(payload) => onCreatorFormFieldChanged(payload, form)" />
+
+	<!-- Choix "Create new form" / "Use existing form" — CRÉATION d'une nouvelle étape -->
+	<div v-if="forms[0].id === stepFormId &amp;&amp; !forms[0].entityToUpdate" style="
+		background:#F9FAFB;border:1px solid #E4E7EC;border-radius:8px;padding:16px;margin:16px 10px;">
+		<div style="font-size:11px;font-weight:700;letter-spacing:0.06em;color:#0D69D4;text-transform:uppercase;margin-bottom:12px;">
+			Form for this step (this line only)
+		</div>
+		<div style="display:flex;gap:10px;margin-bottom:10px;">
+			<DidataTextIconBtn text="Create new form" :color="newStepFormMode === 'create' ? 'primary' : null"
+				@click="newStepFormMode = 'create'" />
+			<DidataTextIconBtn text="Use existing form" :color="newStepFormMode === 'existing' ? 'primary' : null"
+				@click="newStepFormMode = 'existing'; loadReusableStepForms(forms[0].pendingEventTypeId)" />
+		</div>
+
+		<div v-if="!newStepFormMode" style="font-size:13px;color:#667085;font-style:italic;">
+			No form will be created for this step unless you choose one of the options above.
+		</div>
+
+		<div v-else-if="newStepFormMode === 'create'" style="font-size:13px;color:#475467;">
+			A new form will be duplicated from the <strong>{{ newStepEventTypeLabel }}</strong> template when you submit.
+		</div>
+
+		<div v-else>
+			<!-- Un form est choisi : ligne compacte au lieu de garder toute la liste
+			     affichée — "Change" vide la sélection pour rouvrir la liste. -->
+			<div v-if="newStepExistingFormId" style="
+				display:flex;align-items:center;justify-content:space-between;padding:10px 12px;
+				border:1px solid #0072CE;border-radius:6px;background:#EAF5FF;">
+				<div>
+					<div style="font-weight:600;font-size:14px;">{{ (reusableStepForms.find(f => f.id === newStepExistingFormId) || {}).name }}</div>
+					<div style="font-size:12px;color:#667085;">Form #{{ newStepExistingFormId }}</div>
+				</div>
+				<div style="display:flex;gap:8px;">
+					<DidataTextIconBtn text="View / Edit" @click="formIdToEdit = newStepExistingFormId" />
+					<DidataTextIconBtn text="Change" @click="newStepExistingFormId = null" />
+				</div>
+			</div>
+
+			<template v-else>
+				<div v-if="!forms[0].pendingEventTypeId" style="margin-bottom:10px;padding:8px 10px;background:#FFFAEB;border-radius:6px;font-size:12px;color:#B54708;">
+					Choose the event type field in the form above first to filter this list — showing all event types for now.
+				</div>
+				<input v-model="newStepFormSearch" type="text" placeholder="Search existing forms..."
+					style="width:100%;padding:8px 10px;border:1px solid #D0D5DD;border-radius:6px;margin-bottom:10px;box-sizing:border-box;">
+				<div v-if="loadingReusableForms" style="font-size:13px;color:#667085;">Loading…</div>
+				<div v-else-if="filteredReusableStepForms.length === 0" style="font-size:13px;color:#667085;">No existing form found yet.</div>
+				<div v-for="f in filteredReusableStepForms" :key="f.id" @click="newStepExistingFormId = f.id" style="
+					display:flex;align-items:center;justify-content:space-between;padding:10px 12px;
+					border:1px solid #E4E7EC;border-radius:6px;margin-bottom:6px;cursor:pointer;background:#FFF;">
+					<div>
+						<div style="font-weight:600;font-size:14px;">{{ f.name }}</div>
+						<div style="font-size:12px;color:#667085;">Form #{{ f.id }}</div>
+						<div v-if="f.workflowLabels &amp;&amp; f.workflowLabels.length" style="font-size:11.5px;color:#0D69D4;margin-top:2px;">Used in: {{ f.workflowLabels.join(', ') }}</div>
+					</div>
+				</div>
+			</template>
+
+			<div v-if="newStepExistingFormId" style="margin-top:10px;padding:10px 12px;background:#FFFAEB;border-radius:6px;font-size:12.5px;color:#B54708;">
+				Already used elsewhere — editing it changes it everywhere it is reused.
+			</div>
+		</div>
+	</div>
+
+	<!-- Choix "Create new form" / "Use existing form" — ÉDITION d'une étape existante SANS form -->
+	<div v-if="isEditingStepEntity &amp;&amp; !forms[0].entityToUpdate.smpl_workflow_step_form_id" style="
+		background:#F9FAFB;border:1px solid #E4E7EC;border-radius:8px;padding:16px;margin:16px 10px;">
+		<div style="font-size:11px;font-weight:700;letter-spacing:0.06em;color:#0D69D4;text-transform:uppercase;margin-bottom:12px;">
+			Form for this step (this line only)
+		</div>
+		<div style="display:flex;gap:10px;margin-bottom:10px;">
+			<DidataTextIconBtn text="Create new form" @click="attachNewFormToStep(forms[0].entityToUpdate)" />
+			<DidataTextIconBtn text="Use existing form" :color="newStepFormMode === 'existing' ? 'primary' : null"
+				@click="newStepFormMode = 'existing'" />
+		</div>
+		<div v-if="newStepFormMode === 'existing'">
+			<input v-model="newStepFormSearch" type="text" placeholder="Search existing forms..."
+				style="width:100%;padding:8px 10px;border:1px solid #D0D5DD;border-radius:6px;margin-bottom:10px;box-sizing:border-box;">
+			<div v-if="loadingReusableForms" style="font-size:13px;color:#667085;">Loading…</div>
+			<div v-else-if="filteredReusableStepForms.length === 0" style="font-size:13px;color:#667085;">No existing form found for this event type yet.</div>
+			<div v-for="f in filteredReusableStepForms" :key="f.id" @click="attachExistingFormToStep(forms[0].entityToUpdate, f.id)" style="
+				display:flex;align-items:center;justify-content:space-between;padding:10px 12px;
+				border:1px solid #E4E7EC;border-radius:6px;margin-bottom:6px;cursor:pointer;background:#FFF;">
+				<div>
+					<div style="font-weight:600;font-size:14px;">{{ f.name }}</div>
+					<div style="font-size:12px;color:#667085;">Form #{{ f.id }}</div>
+					<div v-if="f.workflowLabels &amp;&amp; f.workflowLabels.length" style="font-size:11.5px;color:#0D69D4;margin-top:2px;">Used in: {{ f.workflowLabels.join(', ') }}</div>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<!-- L'étape a déjà un form : juste un accès rapide pour le voir/éditer -->
+	<div v-if="isEditingStepEntity &amp;&amp; forms[0].entityToUpdate.smpl_workflow_step_form_id" style="
+		display:flex;align-items:center;justify-content:space-between;
+		background:#F9FAFB;border:1px solid #E4E7EC;border-radius:8px;padding:12px 16px;margin:16px 10px;">
+		<div style="font-size:13px;color:#475467;">Form #{{ forms[0].entityToUpdate.smpl_workflow_step_form_id }} is attached to this step.</div>
+		<DidataTextIconBtn text="View / Edit" @click="formIdToEdit = forms[0].entityToUpdate.smpl_workflow_step_form_id" />
+	</div>
+	</div>
+
+	<div class="text-right" style="flex-shrink: 0; background: #ffffff; padding: 10px; border-top: 1px solid var(--dd-gray-200); box-sizing: border-box;">
+		<DidataTextIconBtn text="Close" @click="forms = []; collectionOngoing = false" />
+		<DidataTextIconBtn text="Submit" :title="isValidforms ? 'Submit' : 'Validation Error'"
+			:color="isValidforms ?'primary':'red'" :icon="isValidforms ? 'add' : 'warning'" @click="submit" />
+	</div>
+</div>
+
+<!-- Custom view per step popup -->
+<div v-if="stepCustomViewPopup" style="position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 20;
+    background: #FFFFFF;
+    border: 1px solid #C2C2C2;
+    border-radius: 8px;
+    padding: 20px;
+    min-width: 340px;
+    max-width: 480px;
+    box-shadow: 0 4px 20px rgba(4,30,66,0.25);">
+    <h3 style="margin: 0 0 6px 0; font-size: 1.1em; color: var(--dd-navy-800); font-family: 'Urbanist', sans-serif;">Custom view — step</h3>
+    <p style="margin: 0 0 14px 0; font-size: 0.85em; color: #888;">{{ stepCustomViewPopup.stepLabel }}</p>
+    <div style="display: flex; flex-direction: column; gap: 6px; max-height: 280px; overflow-y: auto; margin-bottom: 16px;">
+        <label style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid #E4E7EC; border-radius: 6px; cursor: pointer;"
+            :style="{ background: !getStep(stepCustomViewPopup.stepId) || !getStep(stepCustomViewPopup.stepId).Custom_View_ID_Step ? '#EAF5FF' : '#F9FAFB' }">
+            <input type="radio"
+                :checked="!getStep(stepCustomViewPopup.stepId) || !getStep(stepCustomViewPopup.stepId).Custom_View_ID_Step"
+                @change="saveStepCustomView(null)">
+            <span style="font-size: 13px; color: #475467;">— Default (line / global)</span>
+        </label>
+        <label v-for="cv in allSampleCustomViews" :key="cv.id"
+            style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid #E4E7EC; border-radius: 6px; cursor: pointer;"
+            :style="{ background: getStep(stepCustomViewPopup.stepId) && getStep(stepCustomViewPopup.stepId).Custom_View_ID_Step == cv.id ? '#EAF5FF' : '#F9FAFB' }">
+            <input type="radio"
+                :checked="getStep(stepCustomViewPopup.stepId) && getStep(stepCustomViewPopup.stepId).Custom_View_ID_Step == cv.id"
+                @change="saveStepCustomView(cv.id)">
+            <span style="font-size: 13px; color: #344054;">{{ cv.name }}</span>
+        </label>
+    </div>
+    <div style="text-align: right;">
+        <DidataTextIconBtn text="Close" @click="closeStepCustomViewConfig()"></DidataTextIconBtn>
+    </div>
+</div>
+
+<!-- Form for this batch — le VRAI form de collecte utilisé plus tard dans
+     smpl normal (smpl_workflow_step_form_id), pas le form d'édition des
+     champs de l'étape/batch. Popup dédié et minimal, indépendant de
+     forms[]/loadedForms. -->
+<div v-if="batchFormEntity" style="position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 20;
+    background: #FFFFFF;
+    border: 1px solid #E4E7EC;
+    border-radius: 12px;
+    padding: 20px;
+    min-width: 380px;
+    max-width: 520px;
+    max-height: 70vh;
+    overflow-y: auto;
+    box-shadow: 0 4px 20px rgba(4,30,66,0.25);">
+    <h3 style="margin: 0 0 4px 0; font-size: 1.1em; color: var(--dd-navy-800); font-family: 'Urbanist', sans-serif;">Form for this batch</h3>
+    <p style="margin: 0 0 16px 0; font-size: 0.85em; color: #667085;">The form used to collect data for this batch in production.</p>
+
+    <div v-if="batchFormEntity.smpl_workflow_step_form_id" style="
+        display:flex;align-items:center;justify-content:space-between;
+        background:#F9FAFB;border:1px solid #E4E7EC;border-radius:8px;padding:12px 16px;">
+        <div style="font-size:13px;color:#475467;">Form #{{ batchFormEntity.smpl_workflow_step_form_id }} is attached to this batch.</div>
+        <DidataTextIconBtn text="View / Edit" @click="formIdToEdit = batchFormEntity.smpl_workflow_step_form_id; closeBatchFormPopup()" />
+    </div>
+
+    <template v-else>
+        <div style="display:flex;gap:10px;margin-bottom:12px;">
+            <DidataTextIconBtn text="Create new form" @click="attachNewFormToStep(batchFormEntity).then(closeBatchFormPopup)" />
+            <DidataTextIconBtn text="Use existing form" :color="newStepFormMode === 'existing' ? 'primary' : null"
+                @click="newStepFormMode = 'existing'" />
+        </div>
+        <div v-if="newStepFormMode === 'existing'">
+            <input v-model="newStepFormSearch" type="text" placeholder="Search existing forms..."
+                style="width:100%;padding:8px 10px;border:1px solid #D0D5DD;border-radius:6px;margin-bottom:10px;box-sizing:border-box;">
+            <div v-if="loadingReusableForms" style="font-size:13px;color:#667085;">Loading…</div>
+            <div v-else-if="filteredReusableStepForms.length === 0" style="font-size:13px;color:#667085;">No existing form found for this event type yet.</div>
+            <div v-for="f in filteredReusableStepForms" :key="f.id" @click="attachExistingFormToStep(batchFormEntity, f.id).then(closeBatchFormPopup)" style="
+                display:flex;align-items:center;justify-content:space-between;padding:10px 12px;
+                border:1px solid #E4E7EC;border-radius:6px;margin-bottom:6px;cursor:pointer;background:#FFF;">
+                <div>
+                    <div style="font-weight:600;font-size:14px;">{{ f.name }}</div>
+                    <div style="font-size:12px;color:#667085;">Form #{{ f.id }}</div>
+                    <div v-if="f.workflowLabels &amp;&amp; f.workflowLabels.length" style="font-size:11.5px;color:#0D69D4;margin-top:2px;">Used in: {{ f.workflowLabels.join(', ') }}</div>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <div style="text-align: right; margin-top: 16px;">
+        <DidataTextIconBtn text="Close" @click="closeBatchFormPopup()"></DidataTextIconBtn>
+    </div>
+</div>
+
+<!-- Wizard de création de workflow : Subject -> Case -> Kit -> Collection -->
+<!-- Caché (pas retiré) tant qu'un autre form (ex: Workflow settings, ouvert
+     depuis l'étape Subject) est affiché par-dessus — sinon les deux modals se
+     superposent au même z-index. -->
+<div v-if="workflowWizard &amp;&amp; !loadedForms" style="position: fixed;
+	top: 56px;
+	left: 0;
+	z-index: 10;
+	width: 100%;
+	height: calc(100% - 56px);
+	background-color: #ffffff;
+    box-sizing: border-box;
+    border-top: 1px solid var(--dd-gray-200);
+    display: flex;
+    flex-direction: column;">
+	<div style="flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; box-sizing: border-box; padding: 20px;">
+
+	<div style="display:flex;gap:8px;margin-bottom:20px;align-items:center;">
+		<div style="padding:6px 14px;border-radius:20px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;cursor:pointer;background:#F9FAFB;color:#475467;"
+			@click="editWorkflowSettingsFromWizard()">
+			Workflow settings
+		</div>
+		<div style="width:1px;height:18px;background:#E4E7EC;"></div>
+		<div v-for="s in visibleWizardSteps" :key="s" style="padding:6px 14px;border-radius:20px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;cursor:pointer;"
+			:style="{ background: s === workflowWizard.step ? '#0072CE' : '#F9FAFB', color: s === workflowWizard.step ? '#FFF' : '#667085' }"
+			@click="goToWizardStep(s)">
+			{{ getWizardStepConfig(s).label }}
+		</div>
+	</div>
+
+	<h3 style="margin-bottom:16px;">{{ getWizardStepConfig(workflowWizard.step).label }}</h3>
+
+	<label v-if="getWizardStepConfig(workflowWizard.step).skipFieldName" style="display:flex;align-items:center;gap:8px;margin-bottom:16px;cursor:pointer;width:fit-content;">
+		<input type="checkbox" v-model="workflowWizardStepEnabled">
+		<span>This workflow uses {{ workflowWizard.step === 'case' ? 'cases' : 'kits' }}</span>
+	</label>
+
+	<div v-if="!getWizardStepConfig(workflowWizard.step).skipFieldName || workflowWizardStepEnabled" style="
+		background:#F9FAFB;border:1px solid #E4E7EC;border-radius:8px;padding:16px;margin-bottom:20px;">
+		<div style="display:flex;gap:10px;margin-bottom:10px;">
+			<DidataTextIconBtn text="Create new form" :color="newWizardFormMode === 'create' ? 'primary' : null"
+				@click="newWizardFormMode = 'create'" />
+			<DidataTextIconBtn text="Use existing form" :color="newWizardFormMode === 'existing' ? 'primary' : null"
+				@click="newWizardFormMode = 'existing'; loadReusableWizardForms(getWizardStepConfig(workflowWizard.step).fieldName)" />
+		</div>
+
+		<div v-if="!newWizardFormMode" style="font-size:13px;color:#667085;font-style:italic;">
+			Choose an option above to continue.
+		</div>
+
+		<div v-else-if="newWizardFormMode === 'create'" style="font-size:13px;color:#475467;">
+			A new form will be duplicated from the <strong>{{ getWizardStepConfig(workflowWizard.step).label }}</strong> template.
+		</div>
+
+		<div v-else>
+			<!-- Un form est choisi : ligne compacte au lieu de garder toute la liste
+			     affichée — "Change" vide la sélection pour rouvrir la liste. -->
+			<div v-if="newWizardExistingFormId" style="
+				display:flex;align-items:center;justify-content:space-between;padding:10px 12px;
+				border:1px solid #0072CE;border-radius:6px;background:#EAF5FF;">
+				<div>
+					<div style="font-weight:600;font-size:14px;">{{ (reusableWizardForms.find(f => f.id === newWizardExistingFormId) || {}).name }}</div>
+					<div style="font-size:12px;color:#667085;">Form #{{ newWizardExistingFormId }}</div>
+				</div>
+				<div style="display:flex;gap:8px;">
+					<DidataTextIconBtn text="View / Edit" @click="formIdToEdit = newWizardExistingFormId" />
+					<DidataTextIconBtn text="Change" @click="newWizardExistingFormId = null" />
+				</div>
+			</div>
+
+			<template v-else>
+				<input v-model="newWizardFormSearch" type="text" placeholder="Search existing forms..."
+					style="width:100%;padding:8px 10px;border:1px solid #D0D5DD;border-radius:6px;margin-bottom:10px;box-sizing:border-box;">
+				<div v-if="loadingReusableWizardForms" style="font-size:13px;color:#667085;">Loading…</div>
+				<div v-else-if="filteredReusableWizardForms.length === 0" style="font-size:13px;color:#667085;">No existing form found yet.</div>
+				<div v-for="f in filteredReusableWizardForms" :key="f.id" @click="newWizardExistingFormId = f.id" style="
+					display:flex;align-items:center;justify-content:space-between;padding:10px 12px;
+					border:1px solid #E4E7EC;border-radius:6px;margin-bottom:6px;cursor:pointer;background:#FFF;">
+					<div>
+						<div style="font-weight:600;font-size:14px;">{{ f.name }}</div>
+						<div style="font-size:12px;color:#667085;">Form #{{ f.id }}</div>
+						<div v-if="f.workflowLabels &amp;&amp; f.workflowLabels.length" style="font-size:11.5px;color:#0D69D4;margin-top:2px;">Used in: {{ f.workflowLabels.join(', ') }}</div>
+					</div>
+				</div>
+			</template>
+
+			<div v-if="newWizardExistingFormId" style="margin-top:10px;padding:10px 12px;background:#FFFAEB;border-radius:6px;font-size:12.5px;color:#B54708;">
+				Already used elsewhere — editing it changes it everywhere it is reused.
+			</div>
+		</div>
+	</div>
+
+	<!-- Types de cas liés à ce workflow (smpl_case_type_workflow_fk) — n'a de
+	     sens que si l'étape Case est activée. Sauvegarde immédiate au clic,
+	     comme saveStepCustomView, pour ne rien perdre si l'utilisateur navigue
+	     ailleurs via les pastilles sans passer par Next. -->
+	<div v-if="workflowWizard.step === 'case' &amp;&amp; workflowWizardStepEnabled" style="
+		background:#F9FAFB;border:1px solid #E4E7EC;border-radius:8px;padding:16px;margin-bottom:20px;">
+		<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+			<div style="font-size:11px;font-weight:700;letter-spacing:0.06em;color:#0D69D4;text-transform:uppercase;">
+				Case types used by this workflow
+			</div>
+			<DidataTextIconBtn text="+ New case type" @click="openNewCaseTypeForm()" />
+		</div>
+		<div v-if="!caseTypesLoaded" style="font-size:13px;color:#667085;">Loading…</div>
+		<div v-else-if="allCaseTypes.length === 0" style="font-size:13px;color:#667085;font-style:italic;margin-bottom:8px;">
+			No case type found in the system yet.
+		</div>
+		<template v-else>
+			<input v-model="caseTypeSearch" type="text" placeholder="Search case types..."
+				style="width:100%;padding:8px 10px;border:1px solid #D0D5DD;border-radius:6px;margin-bottom:10px;box-sizing:border-box;">
+			<div style="max-height:220px;overflow-y:auto;border:1px solid #E4E7EC;border-radius:6px;background:#FFF;padding:4px 12px;">
+				<div v-if="filteredCaseTypes.length === 0" style="font-size:13px;color:#667085;font-style:italic;padding:6px 0;">No case type matches your search.</div>
+				<label v-for="ct in filteredCaseTypes" :key="ct.id" style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;">
+					<input type="checkbox" :checked="(workflow.smpl_case_type_workflow_fk || []).includes(ct.id)" @change="toggleWorkflowCaseType(ct.id)">
+					<span style="font-size:14px;color:#344054;">{{ ct.label }}</span>
+				</label>
+			</div>
+		</template>
+	</div>
+	</div>
+
+	<div style="display:flex;justify-content:space-between;flex-shrink: 0; background: #ffffff; padding: 10px 20px; border-top: 1px solid var(--dd-gray-200); box-sizing: border-box;">
+		<div>
+			<DidataTextIconBtn text="Close" @click="workflowWizard = null; reloadWorkflow()" />
+		</div>
+		<DidataTextIconBtn :text="isLastWizardStep ? 'Submit' : 'Next'" :color="'primary'" @click="submitWizardStep()" />
+	</div>
+</div>
+
+<!-- Form to edit -->
+<div v-if="formIdToEdit" style="position: fixed;
+	top: 56px;
+	left: 0;
+	z-index: 10;
+	width: 100%;
+	height: calc(100% - 56px);
+	background-color: #ffffff;
+    box-sizing: border-box;
+    border-top: 1px solid var(--dd-gray-200);
+    display: flex;
+    flex-direction: column;">
+	<div style="flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; box-sizing: border-box; padding: 10px;">
+	<!-- <h4 v-if="currentForm.title.l1" style="margin-top: 20px; margin-left: 10px;"> {{currentForm.title.l1}} </h4>
+    <h3 v-if="currentForm.title.l2" style="margin-bottom: 20px; margin-left: 10px; font-size: 2em;"> {{currentForm.title.l2}} </h3> -->
+
+	<FormEditor v-if="formIdToEdit !== null" :form-id="formIdToEdit" />
+	</div>
+
+	<div class="text-right" style="flex-shrink: 0; background: #ffffff; padding: 10px; border-top: 1px solid var(--dd-gray-200); box-sizing: border-box;">
+		<DidataTextIconBtn text="Close" @click="closeFormToEdit()" />
+	</div>
+</div>
+
+<style>
+
+@import url('https://fonts.googleapis.com/css2?family=Urbanist:wght@500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+
+:root {
+  --dd-primary-50: #EAF5FF;
+  --dd-primary-100: #D9EEFF;
+  --dd-primary-600: #0072CE;
+  --dd-primary-700: #0D69D4;
+  --dd-green-500: #00C389;
+  --dd-navy-800: #041E42;
+  --dd-gray-50: #F9FAFB;
+  --dd-gray-100: #F2F4F7;
+  --dd-gray-200: #E4E7EC;
+  --dd-gray-300: #D0D5DD;
+  --dd-gray-400: #98A2B3;
+  --dd-gray-500: #667085;
+  --dd-gray-600: #475467;
+  --dd-gray-700: #344054;
+  --dd-warning-surface: #FFFAEB;
+  --dd-warning: #B54708;
+  --dd-shadow-xs: 0 1px 2px 0 rgba(16, 24, 40, 0.05);
+}
+
+#toolbar {
+  background: var(--dd-gray-50);
+  box-shadow: var(--dd-shadow-xs), 0 1px 0 var(--dd-gray-200);
+  z-index: 1000;
+  }
+
+  .sampleLine, #bonhommeSubject, .nodeName, #bonhommeCollect, .toolbarGroup label {
+font-family: 'Urbanist', sans-serif;
+font-weight: 700;
+}
+.container {font-family: 'IBM Plex Sans', Arial, sans-serif;}
+
+.sampleLine text, #bonhommeSubject, #bonhommeCase {
+fill: var(--dd-navy-800);}
+
+#developpedBySBP {
+    width: 200px;
+    position: fixed;
+    bottom: 0;
+    left: 8px;
+    }
+    
+.smpllogo {    
+	height: 40px;
+    float: right;
+    margin-right: 10px;
+    margin-top: -5px;
+    }
+    
+.smpllogo svg {
+    shape-rendering: geometricPrecision;
+  }
+
+.toolbarGroup {
+    float: left;
+    display: block;
+    color: #FFFFFF;
+    padding: 3px 14px;
+    text-decoration: none;
+    font-size: 18px;
+}
+
+.toolbarGroup + .toolbarGroup {
+    border-left: 1px solid var(--dd-gray-200);
+}
+
+.toolbarElement {
+	height: 30px;
+	display: inline;
+	background-color: #FFF;
+    border-radius: 8px;
+    border: 1px solid var(--dd-gray-200);
+    padding: 3px 5px 5px 7px;
+    margin-right: 10px;
+    }
+
+.toolbarGroup label {
+    color: var(--dd-gray-400);
+    font-size: 14px;
+    font-weight: 700;
+
+    margin-left: 6px;
+}
+
+.toolbarGroup select {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    -ms-appearance: none;
+    appearance: none;
+    font-family: 'IBM Plex Sans', sans-serif;
+    color: var(--dd-primary-700);
+    font-weight: 600;
+    margin: 0;
+    height: 30px;
+    border: none;
+    outline: 0;
+    padding: 0 25px 0 10px;
+    border-radius: 4px;
+    background: url(data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%230072CE%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E) no-repeat;
+    background-position: 95% 50%;
+    background-size: 8px;
+    font-size: 14px;
+}
+
+.toolbarGroup a {
+    font-family: 'IBM Plex Sans', sans-serif;
+    color: var(--dd-primary-700);
+    font-weight: 600;
+    padding: 7px 14px 6px 14px;
+    border: 1px solid transparent;
+    margin: -2px 8px 0 0;
+    text-align: center;
+    font-size: 14px;
+    background-repeat: no-repeat;
+    background-size: 15px;
+    border-radius: 8px;
+    height: 32px;
+
+    display: inline-block;
+    cursor: pointer;
+	background-position: center;
+	vertical-align:middle;
+	background-color: var(--dd-primary-50);
+    line-height: 1.2em;
+    transition: background-color 150ms ease;
+}
+.toolbarGroup a.visible {
+    background-repeat: no-repeat;
+    background-size: 15px;
+    background-position: center;
+    background-color: var(--dd-primary-50);
+}
+
+.toolbarGroup a:hover {
+	background-color: var(--dd-primary-100);
+}
+
+#scanField {background-color: #FFF;border-radius: 8px;border: 1px solid var(--dd-gray-300); font-size: 14px; padding: 9px 10px 7px 13px; height: 33px;     margin-top: -4px;}
+
+
+#nodeLayer .node text {
+    fill: var(--dd-gray-600);
+    text-decoration: underline;
+}
+
+#nodeLayer .node.selected text{
+    fill: var(--dd-navy-800);
+}
+
+#nodeLayer .node .icon {
+    fill: white;
+    filter: drop-shadow(0 1px 2px rgba(16,24,40,0.15));
+}
+#nodeLayer .node.selected .icon{
+    fill: var(--dd-navy-800);
+}
+
+/*#nodeLayer .node.active .nodeName {
+    text-decoration: underline;
+}*/
+
+#nodeLayer .node text.clickable, .sampleLine text.clickable {
+text-decoration: underline;
+cursor: pointer !important;
+}
+
+.sidebarGroup {
+    padding: 15px;
+    margin: 10px;
+    background: #FFFFFF;
+    border-radius: 12px;
+    box-shadow: var(--dd-shadow-xs);
+    font-size: 0.8em;
+}
+
+.sidebarGroup p {
+    margin-bottom: 5px,
+}
+
+.sidebarGroup input {
+    border-width: 1px;
+    border-color: var(--dd-gray-300);
+    width: 100%;
+    border-style: solid;
+    padding: 4px,
+}
+
+.sidebarGroup h3:first-child {
+    border-width: 0 0 1px 0;
+    border-color: var(--dd-gray-200);
+    padding-bottom: 10px;
+    margin-bottom: 10px;
+    border-style: solid,
+}
+
+.sidebarGroup span.clickable {
+    text-decoration: underline;
+    cursor: pointer,
+}
+
+#bonhommeCollect {
+    fill: var(--dd-navy-800);
+}
+
+.config-loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: white;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+  overflow: hidden;
+}
+
+.config-loading-bg {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 12% 12%, var(--dd-primary-50) 0%, transparent 42%),
+    radial-gradient(circle at 88% 88%, #E6FBF3 0%, transparent 42%);
+  pointer-events: none;
+}
+
+.config-loading-content {
+  position: relative;
+  width: 92%;
+  max-width: 520px;
+  background: #FFFFFF;
+  border: 1px solid var(--dd-gray-200);
+  border-radius: 20px;
+  box-shadow: 0 24px 48px -12px rgba(4, 30, 66, 0.14);
+  padding: 56px 56px 48px;
+  text-align: center;
+  animation: dd-loading-fade-in 400ms ease-out;
+}
+
+@keyframes dd-loading-fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.config-loading-mark {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+
+.config-loading-tagline {
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 14px;
+  color: var(--dd-gray-500);
+  margin-bottom: 36px;
+  letter-spacing: 0.02em;
+}
+
+.config-progress-bar-container {
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.config-progress-bar {
+  height: 10px;
+  background-color: var(--dd-gray-100);
+  border-radius: 999px;
+  flex-grow: 1;
+  overflow: hidden;
+}
+
+.config-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--dd-primary-600), var(--dd-green-500));
+  transition: width 0.3s ease;
+}
+
+.config-progress-pct {
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--dd-gray-600);
+  min-width: 34px;
+  text-align: right;
+}
+
+.config-progress-message {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--dd-gray-600);
+  font-family: 'IBM Plex Sans', sans-serif;
+}
+
+.config-progress-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--dd-primary-600);
+  animation: dd-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes dd-pulse {
+  0%, 100% { opacity: 0.3; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1); }
+}
+
+.config-loading-brand {
+  font-family: 'Urbanist', sans-serif;
+  font-size: 2.6em;
+  font-weight: 800;
+  color: var(--dd-navy-800);
+  letter-spacing: 0.02em;
+  text-align: center;
+  margin-bottom: 6px;
+}
+
+.config-loading-brand-sub {
+  font-size: 0.5em;
+  font-weight: 600;
+  color: var(--dd-primary-600);
+  letter-spacing: 0.06em;
+  vertical-align: middle;
+}
+
+.config-loading-version {
+  font-size: 11px;
+  color: var(--dd-gray-400);
+  font-family: 'IBM Plex Sans', sans-serif;
+  text-align: center;
+  margin-top: 22px;
+  letter-spacing: 0.08em;
+}
+
+/* Toolbar : label statique remplaçant le dropdown de workflow */
+.toolbarCurrentWorkflow {
+  display: inline-block;
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--dd-navy-800);
+  padding: 7px 10px;
+  margin-right: 6px;
+}
+
+/* Barre de recherche générique (side bar) */
+.dd-search-input {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.dd-search-icon {
+  position: absolute;
+  left: 12px;
+  color: var(--dd-gray-400);
+  font-size: 15px;
+  pointer-events: none;
+}
+.dd-search-input input {
+  width: 100%;
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 14px;
+  color: var(--dd-navy-800);
+  background: #FFFFFF;
+  border: 1px solid var(--dd-gray-300);
+  border-radius: 8px;
+  padding: 9px 12px 9px 34px;
+  box-sizing: border-box;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+.dd-search-input input:focus {
+  outline: none;
+  border-color: var(--dd-primary-600);
+  box-shadow: 0 0 0 4px rgba(0, 114, 206, 0.12);
+}
+
+.dd-sidebar-empty {
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 13px;
+  color: var(--dd-gray-500);
+  font-style: italic;
+  padding: 12px 2px;
+}
+
+/* Side bar de navigation entre workflows */
+/* Design — même panneau "flottant" que smpl normal (coins arrondis côté
+   droit, ombre diffuse) au lieu du rectangle bordé plaqué au bord d'écran. */
+.dd-sidebar {
+  position: fixed;
+  top: 118px;
+  left: 0;
+  /* Gap en bas (au lieu de bottom:0) pour compléter le look carte flottante,
+     comme en haut. */
+  bottom: 16px;
+  width: 264px;
+  background: #FFFFFF;
+  border-right: 1px solid var(--dd-gray-100);
+  border-radius: 0 18px 18px 0;
+  box-shadow: 6px 0 24px -10px rgba(4, 30, 66, 0.16);
+  z-index: 1001;
+  /* Seule .dd-sidebar-list défile (voir plus bas) — nouveau workflow,
+     recherche et tri restent fixes en haut du panneau. */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: width 200ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 200ms ease, border-radius 200ms ease, background-color 200ms ease;
+}
+/* Replié : rail fine et plate collée au bord de l'écran, pas de carte
+   flottante. */
+.dd-sidebar-collapsed {
+  width: 48px;
+  overflow: visible;
+  background: var(--dd-gray-50);
+  border-radius: 0;
+  box-shadow: none;
+  bottom: 0;
+}
+.dd-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  border-bottom: 1px solid var(--dd-gray-100);
+}
+/* Replié : le header n'affiche plus que le bouton toggle, centré
+   verticalement dans la rail. */
+.dd-sidebar-collapsed .dd-sidebar-header {
+  height: 100%;
+  flex-direction: column;
+  justify-content: center;
+  border-bottom: none;
+  padding: 0;
+}
+.dd-sidebar-title {
+  font-family: 'Urbanist', sans-serif;
+  font-weight: 800;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--dd-gray-600);
+}
+/* Bouton pin/toggle en cercle plein, plus proche d'un vrai contrôle
+   d'interface que du texte cliquable brut. */
+.dd-sidebar-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  cursor: pointer;
+  color: var(--dd-primary-600);
+  font-weight: 700;
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 13px;
+  border-radius: 999px;
+  transition: background-color 150ms ease, transform 150ms ease;
+}
+.dd-sidebar-toggle:hover {
+  background: var(--dd-primary-50);
+  transform: scale(1.06);
+}
+.dd-sidebar-pin {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  cursor: pointer;
+  opacity: 0.35;
+  font-size: 13px;
+  border-radius: 999px;
+  filter: grayscale(1);
+  transition: opacity 150ms ease, filter 150ms ease, background-color 150ms ease;
+}
+.dd-sidebar-pin:hover {
+  opacity: 0.7;
+  background: var(--dd-gray-50);
+}
+.dd-sidebar-pin.active {
+  opacity: 1;
+  filter: none;
+  background: var(--dd-primary-50);
+}
+/* Colonne flex remplissant l'espace sous le header — "+ New workflow",
+   recherche et tri sont des enfants "fixes" (taille naturelle), seule
+   .dd-sidebar-list ci-dessous prend le reste de la hauteur et défile. */
+.dd-sidebar-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.dd-sidebar-new {
+  margin: 12px 14px 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--dd-primary-50);
+  color: var(--dd-primary-700);
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  text-align: center;
+  transition: background-color 150ms ease;
+}
+.dd-sidebar-new:hover {
+  background: var(--dd-primary-100);
+}
+.dd-sidebar-search {
+  margin: 0 14px 10px;
+}
+.dd-sidebar-search input {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  font-size: 13px;
+  border-radius: 10px;
+}
+/* Contrôle segmenté (fond gris, segment actif en carte blanche avec ombre
+   légère) au lieu de simples liens texte. */
+.dd-sidebar-sort {
+  display: flex;
+  gap: 2px;
+  margin: 0 14px 12px;
+  padding: 3px;
+  background: var(--dd-gray-50);
+  border-radius: 10px;
+}
+.dd-sidebar-sort span {
+  flex: 1;
+  text-align: center;
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--dd-gray-500);
+  padding: 5px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 150ms ease, color 150ms ease, box-shadow 150ms ease;
+}
+.dd-sidebar-sort span:hover {
+  color: var(--dd-gray-700);
+}
+.dd-sidebar-sort span.active {
+  background: #FFFFFF;
+  color: var(--dd-primary-700);
+  box-shadow: var(--dd-shadow-xs);
+}
+/* Seule cette zone défile — flex:1 1 auto + min-height:0 est ce qui permet à
+   un enfant flex de réellement rétrécir et scroller au lieu de pousser le
+   parent à grandir. */
+.dd-sidebar-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+/* "Chip" arrondi avec un liseré discret au lieu d'une bande plaquée au bord ;
+   l'état actif se distingue par un fond teinté + une ombre légère au lieu de
+   la barre verticale. */
+.dd-sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 10px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 13px;
+  color: var(--dd-gray-700);
+  cursor: pointer;
+  transition: background-color 150ms ease, box-shadow 150ms ease;
+}
+.dd-sidebar-item:hover {
+  background: var(--dd-gray-50);
+}
+.dd-sidebar-item.active {
+  background: var(--dd-primary-50);
+  color: var(--dd-primary-700);
+  font-weight: 700;
+  box-shadow: inset 0 0 0 1px rgba(0, 114, 206, 0.15);
+}
+.dd-sidebar-item-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dd-sidebar-star {
+  flex-shrink: 0;
+  font-size: 14px;
+  color: var(--dd-gray-300);
+  cursor: pointer;
+  transition: color 150ms ease, transform 150ms ease;
+}
+.dd-sidebar-star:hover {
+  color: var(--dd-gray-400);
+  transform: scale(1.15);
+}
+.dd-sidebar-star.active {
+  color: #F79009;
+}
+</style>
