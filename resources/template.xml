@@ -1,0 +1,851 @@
+<svg :width="width" :height="height" :style="{ marginLeft: svgOffsetLeft + 'px' }">
+    <!-- Design 2.4.0 — ombre douce réutilisée par les badges d'étape et les
+         lots, définie une seule fois ici plutôt qu'inline à chaque nœud. -->
+    <defs>
+        <filter id="dd-soft-shadow" x="-60%" y="-60%" width="220%" height="220%">
+            <feDropShadow dx="0" dy="1.5" stdDeviation="2.5" flood-color="#041E42" flood-opacity="0.18"/>
+        </filter>
+    </defs>
+    <g id="frameLayer" class="layer"></g>
+    <g id="batchLayer" class="layer"></g>
+    <g id="linkLayer" class="layer"></g>
+    <g id="lineLayer" class="layer"></g>
+    <g id="nodeLayer" class="layer"></g>
+    <g id="countLayer" class="layer"></g>
+</svg>
+
+<!-- Loading overlay with progress bar -->
+<div v-if="loading" class="loading-overlay">
+  <div class="loading-bg"></div>
+  <div class="loading-content">
+    <div class="loading-mark">
+      <svg viewBox="0 0 48 48" width="60" height="60" aria-hidden="true">
+        <rect x="4" y="4" width="27" height="27" rx="8" fill="#0072CE"/>
+        <rect x="17" y="17" width="27" height="27" rx="8" fill="#00C389" opacity="0.92"/>
+      </svg>
+    </div>
+    <div class="loading-brand">SMPL</div>
+    <div class="loading-tagline">Sample tracking</div>
+    <div class="progress-bar-container">
+      <div class="progress-bar">
+        <div class="progress-fill" :style="{ width: loadingProgress + '%' }"></div>
+      </div>
+      <div class="progress-pct">{{ loadingProgress }}%</div>
+    </div>
+    <div class="progress-message">
+      <span class="progress-dot"></span>
+      {{ loadingMessage }}
+    </div>
+    <div class="loading-version">v{{ appVersion }}</div>
+  </div>
+</div>
+
+<!-- Side bar de navigation entre workflows — remplace le dropdown <select
+     id="wfSelector"> de la toolbar, rétractable (fermé par défaut sauf si
+     épinglé), triable, favoris. Masquée pendant qu'un modal (vue custom ou
+     formulaire) est affiché, pour éviter les conflits de superposition. -->
+<div v-if="!customView &amp;&amp; !(loadedForms &amp;&amp; displayForms)" class="dd-sidebar" :class="{ 'dd-sidebar-collapsed': sidebarCollapsed }">
+  <div class="dd-sidebar-header">
+    <span v-if="!sidebarCollapsed" class="dd-sidebar-title">Workflows</span>
+    <span v-if="!sidebarCollapsed" class="dd-sidebar-pin" :class="{ active: sidebarPinned }"
+      :title="sidebarPinned ? 'Unpin sidebar' : 'Pin sidebar open'" @click="toggleSidebarPin()">📌</span>
+    <span class="dd-sidebar-toggle" @click="sidebarCollapsed = !sidebarCollapsed">{{ sidebarCollapsed ? '»' : '«' }}</span>
+  </div>
+  <div v-if="!sidebarCollapsed" class="dd-sidebar-body">
+    <div class="dd-search-input dd-sidebar-search">
+      <span class="dd-search-icon">⌕</span>
+      <input v-model="sidebarSearch" type="text" placeholder="Search...">
+    </div>
+    <div class="dd-sidebar-sort">
+      <span :class="{ active: sidebarSortField === 'name' }" @click="toggleSidebarSort('name')">Name<template v-if="sidebarSortField === 'name'">{{ sidebarSortDir === 'desc' ? ' ↓' : ' ↑' }}</template></span>
+      <span :class="{ active: sidebarSortField === 'date' }" @click="toggleSidebarSort('date')">Date<template v-if="sidebarSortField === 'date'">{{ sidebarSortDir === 'desc' ? ' ↓' : ' ↑' }}</template></span>
+    </div>
+    <!-- Seule cette liste défile — recherche et tri restent fixes en haut. -->
+    <div class="dd-sidebar-list">
+      <div v-if="sortedSidebarWorkflows.length === 0" class="dd-sidebar-empty">No match.</div>
+      <div v-for="wf in sortedSidebarWorkflows" :key="wf.id" class="dd-sidebar-item" :class="{ active: workflow &amp;&amp; workflow.id == wf.id }"
+        @click="selectWorkflow(wf.id)">
+        <span class="dd-sidebar-star" :class="{ active: favoriteWorkflowIds.includes(wf.id) }"
+          @click="toggleFavoriteWorkflow(wf.id, $event)">{{ favoriteWorkflowIds.includes(wf.id) ? '★' : '☆' }}</span>
+        <span class="dd-sidebar-item-label">{{ wf.smpl_label }}</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Your existing template -->
+
+<div id="developpedBySBP">
+</div>
+
+<div id="toolbar" style="
+position: fixed;
+top: 56px;
+left: 0;
+z-index: 1000;
+width: 100%;
+overflow-x: auto;
+overflow-y: hidden;
+padding: 15px 0 15px 0;
+display: flex;
+align-items: center;
+flex-wrap: nowrap;
+">
+</div>
+
+<div id="sidebar" style="position: fixed;
+top: 110px;
+right: 20px;
+z-index: 1;
+width: 20%;
+max-width: 350px;
+overflow: hidden;">
+</div>
+
+<div v-if="customView || loadedForms" id="cache" style="
+    position: fixed;
+    width:100%;
+    height:100%;
+    top:0;
+    left:0;
+	z-index: 5;
+	background-color: rgba(4, 30, 66, 0.55);"></div>
+
+<div v-if="customView" style="position: fixed;
+	top: 60px;
+	left: 10%;
+	z-index: 6;
+	width: 80%;
+	background-color: #FFFFFF;
+	display: flex;
+	flex-direction: column;
+    max-height: 92vh;
+	border: 1px solid var(--dd-gray-200);
+	border-radius: 12px;
+	overflow: hidden;
+	box-shadow: 0 24px 48px -12px rgba(4, 30, 66, 0.18);">
+	<h3 v-if="customViewData.title" style="margin: 0; padding: 16px 16px 0 16px; font-size: 1.4em; font-family: 'Urbanist', sans-serif; color: var(--dd-navy-800); flex-shrink: 0;"> {{customViewData.title}} </h3>
+	<div style="overflow-y: auto; overflow-x: hidden; flex: 1; padding: 16px;">
+        <CustomView ref="customViewRef" :custom-view="customView" :options="['with_actions_menu', 'with_entity_genealogy', 'with_entity_audit', 'with_favorite_actions','with_view_in_storage', 'with_edit_columns', 'with_save_custom_view', 'with_entity_info', 'with_undo', 'with_redo', 'with_search', 'with_filter', 'with_export_entities']"
+        :selected-entities-ids="selectedCustomViewEntitiesIds" @selected-entities="onEntitiesSelected($event)" />
+        <a v-if="customViewData.type=='SMPL_SUBJECT'" v-on:click="promptNewSubject()" class="v-btn v-btn--outlined theme--light v-size--small primary--text">New subject</a>
+        <a v-if="customViewData.type=='SMPL_CASE'" v-on:click="promptNewCase()" class="v-btn v-btn--outlined theme--light v-size--small primary--text">New case</a>
+    </div>
+	<div style="flex-shrink: 0; padding: 12px 16px; border-top: 1px solid var(--dd-gray-200); background: #FFFFFF; display: flex; gap: 8px; justify-content: flex-end;">
+        <DidataTextIconBtn text="Close" @click="closeCustomview()"></DidataTextIconBtn>
+        <DidataTextIconBtn text="Save selection" @click="customviewSelect()"></DidataTextIconBtn>
+    </div>
+</div>
+
+<div v-if="loadedForms && displayForms" style="position: fixed;
+	top: 100px;
+	left: 15%;
+	z-index: 10;
+	width: 70%;
+	background-color: #FFFFFF;
+    overflow-y: scroll;
+	overflow-x: hidden;
+    max-height: 80vh;
+	border: 1px solid var(--dd-gray-200);
+	border-radius: 12px;
+	padding: 10px;
+    box-shadow: 0 24px 48px -12px rgba(4, 30, 66, 0.18);">
+	<h3 v-if="forms[0].title" style="margin-bottom: 20px; margin-left: 10px; font-size: 1.6em; font-family: 'Urbanist', sans-serif; color: var(--dd-navy-800);"> {{forms[0].title}} </h3>
+    <EntitiesCreatorForm v-for="(form,i) in forms" :key="i + '' + form.id" :ref="`formRendering${i + '' + form.id}`" :form="form.form"
+        :with-submit-btn="false" :defaultEntity="form.defaultEntity" @changed-value="(e) => changedValue(e,form)" @form-submitted="formSubmitted(form)"
+        use-create-entity @entity-created="(e) => {form.e = e}" />
+    <div class="text-right">
+        <DidataTextIconBtn text="Update ID" @click="updateId()" />
+        <DidataTextIconBtn text="Cancel" @click="forms = []; pipeline = []; collectionOngoing = false" />
+        <DidataTextIconBtn text="Submit" :title="isValidforms ? 'Submit' : 'Validation Error'"
+            :color="isValidforms ?'primary':'red'" :icon="isValidforms ? null : 'warning'" @click="submit();" />
+    </div>
+</div>
+
+<style>
+
+@import url('https://fonts.googleapis.com/css2?family=Urbanist:wght@500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+
+:root {
+  --dd-primary-50: #EAF5FF;
+  --dd-primary-100: #D9EEFF;
+  --dd-primary-600: #0072CE;
+  --dd-primary-700: #0D69D4;
+  --dd-green-500: #00C389;
+  --dd-navy-800: #041E42;
+  --dd-gray-50: #F9FAFB;
+  --dd-gray-100: #F2F4F7;
+  --dd-gray-200: #E4E7EC;
+  --dd-gray-300: #D0D5DD;
+  --dd-gray-400: #98A2B3;
+  --dd-gray-500: #667085;
+  --dd-gray-600: #475467;
+  --dd-gray-700: #344054;
+  --dd-warning-surface: #FFFAEB;
+  --dd-warning: #B54708;
+  --dd-error-surface: #FEF3F2;
+  --dd-error: #D92D20;
+  --dd-shadow-xs: 0 1px 2px 0 rgba(16, 24, 40, 0.05);
+}
+
+#main--wrapper {background-color: var(--dd-gray-50);}
+
+#toolbar {
+  background: var(--dd-gray-50);
+  box-shadow: var(--dd-shadow-xs), 0 1px 0 var(--dd-gray-200);
+  z-index: 1000;
+  }
+
+
+.sampleLine, #bonhommeSubject, .nodeName, #bonhommeCollect, .toolbarGroup label {
+font-family: 'Urbanist', sans-serif;
+font-weight: 700;
+}
+.container {font-family: 'IBM Plex Sans', Arial, sans-serif;}
+
+.sampleLine text, #bonhommeSubject, #bonhommeCase {
+fill: var(--dd-navy-800);}
+
+#developpedBySBP {
+    width: 200px;
+    position: fixed;
+    bottom: 0;
+    /* Design 2.4.0 — le side bar élargi (jusqu'à 264px) passe maintenant par-
+       dessus ce logo quand il est ancré à gauche ; déplacé à droite où rien
+       ne le recouvre. */
+    right: 8px;
+    }
+
+.smpllogo {
+	height: 40px;
+    float: right;
+    margin-right: 10px;
+    margin-top: -5px;
+    }
+
+.smpllogo svg {
+    shape-rendering: geometricPrecision;
+  }
+
+.toolbarGroup {
+    float: left;
+    display: block;
+    color: #FFFFFF;
+    padding: 3px 10px;
+    text-decoration: none;
+    font-size: 18px;
+}
+
+.toolbarElement {
+	height: 30px;
+	display: inline;
+	background-color: #FFF;
+    border-radius: 8px;
+    border: 1px solid var(--dd-gray-200);
+    padding: 3px 5px 5px 7px;
+    margin-right: 10px;
+    }
+
+.toolbarGroup label {
+    color: var(--dd-gray-400);
+    font-size: 14px;
+    font-weight: 700;
+
+    margin-left: 6px;
+}
+
+.toolbarGroup select {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    -ms-appearance: none;
+    appearance: none;
+    font-family: 'IBM Plex Sans', sans-serif;
+    color: var(--dd-primary-700);
+    font-weight: 600;
+    margin: 0;
+    height: 30px;
+    border: none;
+    outline: 0;
+    padding: 0 25px 0 10px;
+    border-radius: 4px;
+    background: url(data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%230072CE%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E) no-repeat;
+    background-position: 95% 50%;
+    background-size: 8px;
+    font-size: 14px;
+}
+
+/* Dropdown "Case type" — menu custom en div (pas un <select multiple> natif :
+   le CSS/JS global de la plateforme s'applique à tout <select> de la page et
+   rendait le multi-select natif moche et impossible à utiliser). Plusieurs
+   types de cas cochables à la fois via .dd-casetype-option. Le popup lui-même
+   (#dd-casetype-portal) est injecté dans <body>, PAS comme enfant du
+   toolbar/wrapper : #toolbar a overflow-x:auto + overflow-y:hidden pour son
+   propre scroll horizontal, ce qui clippait/cachait tout popup positionné en
+   absolute dépassant sa hauteur (visible seulement en partie, "caché sous le
+   canvas SMPL"). position/top/left sont fixés dynamiquement en JS
+   (getBoundingClientRect du déclencheur) — les valeurs ci-dessous ne sont
+   qu'un habillage visuel, jamais la position réelle. */
+.dd-casetype-wrapper {
+    position: relative;
+}
+.dd-casetype-trigger {
+    display: inline-flex;
+    align-items: center;
+    height: 30px;
+    padding: 0 10px;
+    cursor: pointer;
+    color: var(--dd-primary-700);
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-weight: 600;
+    font-size: 14px;
+    max-width: 160px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.dd-casetype-popup {
+    z-index: 2000;
+    background: #FFFFFF;
+    border: 1px solid var(--dd-gray-200);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px -4px rgba(4, 30, 66, 0.18);
+    padding: 6px;
+    min-width: 190px;
+    max-height: 260px;
+    overflow-y: auto;
+}
+.dd-casetype-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 13px;
+    color: var(--dd-gray-700);
+    white-space: nowrap;
+}
+.dd-casetype-option:hover {
+    background: var(--dd-gray-50);
+}
+.dd-casetype-option input[type="checkbox"] {
+    margin: 0;
+    cursor: pointer;
+}
+
+.toolbarGroup button {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    -ms-appearance: none;
+    appearance: none;
+    font-family: 'IBM Plex Sans', sans-serif;
+    color: var(--dd-primary-700);
+    font-weight: 600;
+    margin: 0;
+    height: 30px;
+    border: none;
+    outline: 0;
+    padding: 0 25px 0 10px;
+    border-radius: 4px;
+    background: url(data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%230072CE%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E) no-repeat;
+    background-position: 95% 50%;
+    background-size: 8px;
+    font-size: 14px;
+}
+
+
+.toolbarGroup a {
+    font-family: 'IBM Plex Sans', sans-serif;
+    color: var(--dd-primary-700);
+    font-weight: 600;
+    padding: 7px 14px 6px 14px;
+    border: 1px solid transparent;
+    margin: -2px 8px 0 0;
+    text-align: center;
+    font-size: 14px;
+    background-repeat: no-repeat;
+    background-size: 15px;
+    border-radius: 8px;
+    height: 32px;
+
+    display: inline-block;
+    cursor: pointer;
+	background-position: center;
+	vertical-align:middle;
+	background-color: var(--dd-primary-50);
+    line-height: 1.2em;
+    transition: background-color 150ms ease;
+}
+.toolbarGroup a.visible {
+    background-repeat: no-repeat;
+    background-size: 15px;
+    background-position: center;
+    background-color: var(--dd-primary-50);
+}
+
+.toolbarGroup a:hover {
+	background-color: var(--dd-primary-100);
+}
+
+#scanField {background-color: #FFF;border-radius: 8px;border: 1px solid var(--dd-gray-300); font-size: 14px; padding: 9px 10px 7px 13px; height: 33px;     margin-top: -4px;}
+
+#nodeFrameLayer .node .nodeFrameBkgnd {
+    border-radius: 4px;
+    stroke-width: 1px;
+    stroke: var(--dd-gray-200);
+    opacity: 1;
+}
+
+#nodeFrameLayer .node.active .nodeFrameBkgnd {
+    stroke-width: 2px;
+    stroke: var(--dd-primary-600);
+    opacity: 1;
+}
+
+#nodeLayer .node text {
+    fill: var(--dd-gray-500);
+    text-decoration: none;
+}
+
+#nodeLayer .node.active text {
+    fill: var(--dd-navy-800);
+}
+
+.sidebarGroup {
+    padding: 15px;
+    margin: 10px;
+    background: #FFFFFF;
+    border-radius: 12px;
+    box-shadow: var(--dd-shadow-xs);
+    font-size: 0.8em;
+}
+
+.sidebarGroup p {
+    margin-bottom: 5px;
+}
+
+.sidebarGroup input {
+    border-width: 1px;
+    border-color: var(--dd-gray-300);
+    width: 100%;
+    border-style: solid;
+    padding: 4px;
+}
+
+.sidebarGroup h3:first-child {
+    border-width: 0 0 1px 0;
+    border-color: var(--dd-gray-200);
+    padding-bottom: 10px;
+    margin-bottom: 10px;
+    border-style: solid;
+}
+
+.sidebarGroup span.clickable {
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+#bonhommeCollect {
+    fill: var(--dd-navy-800);
+    text-decoration: underline !important;
+}
+.loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: white;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+  overflow: hidden;
+}
+
+.loading-bg {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 12% 12%, var(--dd-primary-50) 0%, transparent 42%),
+    radial-gradient(circle at 88% 88%, #E6FBF3 0%, transparent 42%);
+  pointer-events: none;
+}
+
+.loading-content {
+  position: relative;
+  width: 92%;
+  max-width: 520px;
+  background: #FFFFFF;
+  border: 1px solid var(--dd-gray-200);
+  border-radius: 20px;
+  box-shadow: 0 24px 48px -12px rgba(4, 30, 66, 0.14);
+  padding: 56px 56px 48px;
+  text-align: center;
+  animation: dd-loading-fade-in 400ms ease-out;
+}
+
+@keyframes dd-loading-fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.loading-mark {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+
+.loading-brand {
+  font-family: 'Urbanist', sans-serif;
+  font-size: 2.6em;
+  font-weight: 800;
+  color: var(--dd-navy-800);
+  letter-spacing: 0.02em;
+  text-align: center;
+  margin-bottom: 6px;
+}
+
+.loading-tagline {
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 14px;
+  color: var(--dd-gray-500);
+  margin-bottom: 36px;
+  letter-spacing: 0.02em;
+}
+
+.progress-bar-container {
+  width: 100%;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.progress-bar {
+  height: 10px;
+  width: 100%;
+  background-color: var(--dd-gray-100);
+  border-radius: 999px;
+  overflow: hidden;
+  flex-grow: 1;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--dd-primary-600), var(--dd-green-500));
+  transition: width 0.35s ease;
+}
+
+.progress-pct {
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--dd-gray-600);
+  min-width: 34px;
+  text-align: right;
+}
+
+.progress-message {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--dd-gray-600);
+  font-family: 'IBM Plex Sans', sans-serif;
+  min-height: 16px;
+}
+
+.progress-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--dd-primary-600);
+  animation: dd-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes dd-pulse {
+  0%, 100% { opacity: 0.3; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1); }
+}
+
+.loading-version {
+  font-size: 11px;
+  color: var(--dd-gray-400);
+  text-align: center;
+  margin-top: 22px;
+  font-family: 'IBM Plex Sans', sans-serif;
+  letter-spacing: 0.08em;
+}
+
+.toolbarCurrentWorkflow {
+  display: inline-block;
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--dd-navy-800);
+  padding: 7px 10px;
+  margin-right: 6px;
+  cursor: pointer;
+}
+
+/* Barre de recherche générique (side bar) */
+.dd-search-input {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.dd-search-icon {
+  position: absolute;
+  left: 12px;
+  color: var(--dd-gray-400);
+  font-size: 15px;
+  pointer-events: none;
+}
+.dd-search-input input {
+  width: 100%;
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 14px;
+  color: var(--dd-navy-800);
+  background: #FFFFFF;
+  border: 1px solid var(--dd-gray-300);
+  border-radius: 8px;
+  padding: 9px 12px 9px 34px;
+  box-sizing: border-box;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+.dd-search-input input:focus {
+  outline: none;
+  border-color: var(--dd-primary-600);
+  box-shadow: 0 0 0 4px rgba(0, 114, 206, 0.12);
+}
+
+.dd-sidebar-empty {
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 13px;
+  color: var(--dd-gray-500);
+  font-style: italic;
+  padding: 12px 2px;
+}
+
+/* Side bar de navigation entre workflows */
+/* Design 2.4.0 — panneau "flottant" (coins arrondis côté droit, ombre plus
+   diffuse au lieu d'une bordure dure) au lieu d'un simple rectangle collé au
+   bord de l'écran. */
+.dd-sidebar {
+  position: fixed;
+  top: 118px;
+  left: 0;
+  /* Un gap en bas (au lieu de bottom:0, collé à l'écran) complète le look
+     "carte flottante" — coins arrondis à droite mais pile plaquée en bas
+     jurait avec le gap déjà présent en haut. */
+  bottom: 16px;
+  width: 264px;
+  background: #FFFFFF;
+  border-right: 1px solid var(--dd-gray-100);
+  border-radius: 0 18px 18px 0;
+  box-shadow: 6px 0 24px -10px rgba(4, 30, 66, 0.16);
+  /* #toolbar est passé à z-index:1000 (fix du popup "Case type" qui se
+     faisait clipper) — le side bar doit rester AU-DESSUS de la toolbar,
+     sinon le moindre chevauchement vertical (top:118px trop juste selon le
+     contenu réel de la toolbar) fait peindre la toolbar par-dessus le haut
+     du side bar, qui semble alors "caché dessous". */
+  z-index: 1001;
+  /* Seule .dd-sidebar-list défile (voir plus bas) — le panneau lui-même ne
+     scroll plus comme un bloc entier (header/recherche/tri restaient fixes
+     visuellement avant seulement parce que le contenu tenait sur un écran;
+     dès qu'il y avait assez de workflows pour dépasser, tout le panneau
+     scrollait, recherche et tri compris). */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: width 200ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 200ms ease, border-radius 200ms ease, background-color 200ms ease;
+}
+/* Replié : rail fine et plate collée au bord de l'écran, pas de carte
+   flottante — le panneau arrondi + ombré plaqué sur toute la hauteur avec
+   un seul petit bouton dedans faisait un gros rectangle vide qui "flottait"
+   bizarrement. Le rail, lui, se fond dans le chrome de la page. */
+.dd-sidebar-collapsed {
+  width: 48px;
+  overflow: visible;
+  background: var(--dd-gray-50);
+  border-radius: 0;
+  box-shadow: none;
+  /* La rail plate va jusqu'en bas de l'écran (pas de gap) — le gap de 16px
+     de .dd-sidebar n'a de sens que pour la carte flottante dépliée. */
+  bottom: 0;
+}
+.dd-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  border-bottom: 1px solid var(--dd-gray-100);
+}
+/* Replié : le header n'affiche plus que le bouton toggle (titre + pin cachés
+   par v-if) — centré verticalement dans la rail au lieu de rester collé en
+   haut avec tout le reste de la hauteur vide en dessous. */
+.dd-sidebar-collapsed .dd-sidebar-header {
+  height: 100%;
+  flex-direction: column;
+  justify-content: center;
+  border-bottom: none;
+  padding: 0;
+}
+.dd-sidebar-title {
+  font-family: 'Urbanist', sans-serif;
+  font-weight: 800;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--dd-gray-600);
+}
+/* Design 2.4.0 — bouton pin/toggle en cercle plein, plus proche d'un vrai
+   contrôle d'interface que du texte cliquable brut. */
+.dd-sidebar-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  cursor: pointer;
+  color: var(--dd-primary-600);
+  font-weight: 700;
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 13px;
+  border-radius: 999px;
+  transition: background-color 150ms ease, transform 150ms ease;
+}
+.dd-sidebar-toggle:hover {
+  background: var(--dd-primary-50);
+  transform: scale(1.06);
+}
+.dd-sidebar-pin {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  cursor: pointer;
+  opacity: 0.35;
+  font-size: 13px;
+  border-radius: 999px;
+  filter: grayscale(1);
+  transition: opacity 150ms ease, filter 150ms ease, background-color 150ms ease;
+}
+.dd-sidebar-pin:hover {
+  opacity: 0.7;
+  background: var(--dd-gray-50);
+}
+.dd-sidebar-pin.active {
+  opacity: 1;
+  filter: none;
+  background: var(--dd-primary-50);
+}
+/* .dd-sidebar-body : colonne flex remplissant l'espace sous le header —
+   recherche et tri sont des enfants "fixes" (taille naturelle), seule
+   .dd-sidebar-list ci-dessous prend le reste de la hauteur et défile. */
+.dd-sidebar-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.dd-sidebar-search {
+  margin: 14px 14px 10px;
+}
+.dd-sidebar-search input {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  font-size: 13px;
+  border-radius: 10px;
+}
+/* Design 2.4.0 — contrôle segmenté (fond gris, segment actif en carte blanche
+   avec ombre légère) au lieu de simples liens texte, plus proche d'un vrai
+   toggle "Name / Newest" moderne. */
+.dd-sidebar-sort {
+  display: flex;
+  gap: 2px;
+  margin: 0 14px 12px;
+  padding: 3px;
+  background: var(--dd-gray-50);
+  border-radius: 10px;
+}
+.dd-sidebar-sort span {
+  flex: 1;
+  text-align: center;
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--dd-gray-500);
+  padding: 5px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 150ms ease, color 150ms ease, box-shadow 150ms ease;
+}
+.dd-sidebar-sort span:hover {
+  color: var(--dd-gray-700);
+}
+.dd-sidebar-sort span.active {
+  background: #FFFFFF;
+  color: var(--dd-primary-700);
+  box-shadow: var(--dd-shadow-xs);
+}
+/* Seule cette zone défile (recherche/tri au-dessus restent fixes) —
+   flex:1 1 auto + min-height:0 est ce qui permet à un enfant flex de
+   réellement rétrécir et scroller au lieu de pousser le parent à grandir. */
+.dd-sidebar-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+/* Design 2.4.0 — "chip" arrondi avec un liseré discret au lieu d'une bande
+   plaquée au bord ; l'état actif se distingue par un fond teinté + un point
+   coloré (au lieu de la barre verticale) et une ombre légère. */
+.dd-sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 10px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 13px;
+  color: var(--dd-gray-700);
+  cursor: pointer;
+  transition: background-color 150ms ease, box-shadow 150ms ease;
+}
+.dd-sidebar-item:hover {
+  background: var(--dd-gray-50);
+}
+.dd-sidebar-item.active {
+  background: var(--dd-primary-50);
+  color: var(--dd-primary-700);
+  font-weight: 700;
+  box-shadow: inset 0 0 0 1px rgba(0, 114, 206, 0.15);
+}
+.dd-sidebar-item-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dd-sidebar-star {
+  flex-shrink: 0;
+  font-size: 14px;
+  color: var(--dd-gray-300);
+  cursor: pointer;
+  transition: color 150ms ease, transform 150ms ease;
+}
+.dd-sidebar-star:hover {
+  color: var(--dd-gray-400);
+  transform: scale(1.15);
+}
+.dd-sidebar-star.active {
+  color: #F79009;
+}
+</style>

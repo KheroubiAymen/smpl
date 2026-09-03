@@ -1,0 +1,40 @@
+{
+    "name": "swissdidata/smpl",
+    "description": "SMPL — Sample tracking workflow plugin for DiData",
+    "version": "2.1.5",
+    "require": {
+        "didata/installer": "@dev"
+    },
+    "autoload": {
+        "psr-4": {
+            "SwissDidata\\Smpl\\": "src"
+        }
+    },
+    "extra": {
+        "branch-alias": {
+            "dev-master": "2.x-dev"
+        },
+        "laravel": {
+            "providers": [
+                "SwissDidata\\Smpl\\SmplPackage"
+            ]
+        },
+        "didata": {
+            "plugin": {
+                "name": "SMPL",
+                "type": "module",
+                "module_name": "smpl",
+                "version": "2.1.5",
+                "state": "production",
+                "icon": {
+                    "code": "biotech",
+                    "color": "#0072CE"
+                },
+                "template": "resources/template.xml",
+                "script": "resources/script.js"
+            }
+        }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}
