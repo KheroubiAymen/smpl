@@ -235,8 +235,12 @@
     //==========================
     
     async getResources(resources) {
+      // Construit l'URL depuis la base de l'app (axios sait gérer les installs
+      // sous-répertoire comme /test/ ou /prod/).
+      const apiBase = this.dapp.$axios.defaults.baseURL || '';
+      const appBase = apiBase.replace(/\/api\/?$/, '').replace(/\/$/, '');
       resources.forEach(resource => {
-        this.resources[resource.key] = `/vendor/smpl/${resource.name}`;
+        this.resources[resource.key] = `${appBase}/vendor/smpl/${resource.name}`;
       });
     },
     
