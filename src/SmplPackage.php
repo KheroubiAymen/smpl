@@ -11,6 +11,7 @@ class SmplPackage extends PackageInstaller
     {
         $package->hasNoConfigFile()
             ->hasNoRoutes()
+            ->hasNoTranslations()
             ->hasModulePlugin([
                 'name'      => 'SMPL',
                 'meta_data' => ['module_name' => 'smpl'],
