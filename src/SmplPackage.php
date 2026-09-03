@@ -21,14 +21,4 @@ class SmplPackage extends PackageInstaller
             ]);
     }
 
-    public function afterBoot(): void
-    {
-        try {
-            \App\Models\Plugin::where('name', 'SMPL')
-                ->where('state', 'test')
-                ->update(['state' => 'production', 'is_enable' => true]);
-        } catch (\Throwable) {
-            // table may not exist during migrations
-        }
-    }
 }
