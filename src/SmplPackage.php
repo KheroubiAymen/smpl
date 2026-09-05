@@ -5,13 +5,13 @@ namespace SwissDidata\Smpl;
 use Didata\Packages\installer\Package;
 use Didata\Packages\installer\PackageInstaller;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 
 class SmplPackage extends PackageInstaller
 {
     public function configure(Package $package): void
     {
         $package->hasNoConfigFile()
-            ->hasMigrations()
             ->hasNoTranslations()
             ->hasModulePlugin([
                 'name'      => 'SMPL',
@@ -29,16 +29,10 @@ class SmplPackage extends PackageInstaller
             ]);
     }
 
-    // Bump this constant whenever a new release ships changed JS/template files.
-    // It forces a fresh flag-file name so any stale flag from the previous release is ignored.
-    private const SYNC_VERSION = '2.3.4';
+    private const SYNC_VERSION = '2.3.5';
 
     public function afterBoot(): void
     {
-        // DiData's PackageInstaller never calls loadMigrationsFrom(), so we
-        // register our migrations directory manually here during boot so that
-        // Artisan::call('migrate') can discover them.
-        $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
         $this->autoSync();
     }
 
@@ -51,17 +45,33 @@ class SmplPackage extends PackageInstaller
             return;
         }
 
-        // Defer until ALL providers (including app providers) have booted.
-        // Package providers boot before app providers, so calling Artisan here
-        // directly would fail because marketplace services are not yet bound.
         app()->booted(function () use ($flagFile) {
             try {
-                Artisan::call('migrate', ['--force' => true]);
+                // Run package migrations directly in PHP — avoids Artisan::call('migrate')
+                // which re-bootstraps a console kernel and can cause circular provider errors.
+                $this->runPackageMigrations();
                 Artisan::call('marketplace:sync-contributions');
                 touch($flagFile);
             } catch (\Throwable $e) {
                 // Retry on the next request — do not create the flag file.
             }
         });
+    }
+
+    private function runPackageMigrations(): void
+    {
+        $path  = __DIR__.'/../database/migrations';
+        $ran   = DB::table('migrations')->pluck('migration')->all();
+        $batch = (DB::table('migrations')->max('batch') ?? 0) + 1;
+
+        foreach (glob($path.'/*.php') as $file) {
+            $name = basename($file, '.php');
+            if (in_array($name, $ran, true)) {
+                continue;
+            }
+            $migration = require $file;
+            $migration->up();
+            DB::table('migrations')->insert(['migration' => $name, 'batch' => $batch]);
+        }
     }
 }
