@@ -31,10 +31,14 @@ class SmplPackage extends PackageInstaller
 
     // Bump this constant whenever a new release ships changed JS/template files.
     // It forces a fresh flag-file name so any stale flag from the previous release is ignored.
-    private const SYNC_VERSION = '2.3.3';
+    private const SYNC_VERSION = '2.3.4';
 
     public function afterBoot(): void
     {
+        // DiData's PackageInstaller never calls loadMigrationsFrom(), so we
+        // register our migrations directory manually here during boot so that
+        // Artisan::call('migrate') can discover them.
+        $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
         $this->autoSync();
     }
 
