@@ -257,9 +257,14 @@
       });
     },
     async getRouteURLByName(name) {
-      const base = this.dapp.$axios.defaults.baseURL.replace(/\/$/, '')
+      if (!this._smplRouteCache) {
+        const routes = await this.dapp.$axios.$get('/user-routes')
+        this._smplRouteCache = {}
+        routes.forEach(r => { this._smplRouteCache[r.name] = r.url })
+      }
+      const url = this._smplRouteCache[name]
       const currentProject = $nuxt.$store.getters['currentUser/getCurrentProject']
-      return `${base}/user-routes-call/${name}?projectId${currentProject.id ? '=' + currentProject.id : ''}`
+      return `${url}?projectId${currentProject.id ? '=' + currentProject.id : ''}`
     },
     async getAllWorkflows(id = null) {
       this.workflows = []
