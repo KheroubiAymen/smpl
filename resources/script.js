@@ -251,10 +251,18 @@
     },
     
     async getRouteURLByName(name) {
-      const routes = await this.dapp.$axios.$get(`/user-routes`);
-      const route = routes.find(route => route.name == name).url.replace("smia_chuv", "chuv").replace("http://", "https://");
+      const routeMap = {
+        'smpl_get_all_workflows':     'smpl/workflows',
+        'smpl_load_workflow':         'smpl/load-workflow',
+        'smpl_get_entity_by_barcode': 'smpl/entity-by-barcode',
+        'smpl_get_samples_by_steps':  'smpl/samples-by-steps',
+        'smpl_get_samples_by_kit':    'smpl/samples-by-kit',
+        'smpl_get_sample_counts':     'smpl/sample-counts',
+        'smpl_generate_id':           'smpl/generate-id',
+      };
+      const base = this.dapp.$axios.defaults.baseURL;
       const currentProject = $nuxt.$store.getters['currentUser/getCurrentProject'];
-      return `${route}?projectId${currentProject.id ? "=" + currentProject.id : ""}`;
+      return `${base}${routeMap[name]}?projectId${currentProject.id ? '=' + currentProject.id : ''}`;
     },
 
     //==========================
