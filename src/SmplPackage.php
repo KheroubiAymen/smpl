@@ -31,7 +31,7 @@ class SmplPackage extends PackageInstaller
             ]);
     }
 
-    private const SYNC_VERSION = '2.3.8';
+    private const SYNC_VERSION = '2.3.9';
 
     public function afterBoot(): void
     {
@@ -52,9 +52,15 @@ class SmplPackage extends PackageInstaller
         app()->booted(function () use ($schemaFlag, $routeFlag) {
             if (!file_exists($schemaFlag)) {
                 try {
-                    (new SmplSchemaSeeder())->seed();
-                    touch($schemaFlag);
-                    Log::info('[SMPL] Entity schema seeded successfully');
+                    $created = (new SmplSchemaSeeder())->seed();
+                    // Verify the key entity type exists before marking schema as done
+                    $schemaReady = DB::table('entitytype')->where('name', 'SMPL_STUDY')->exists();
+                    if ($schemaReady) {
+                        touch($schemaFlag);
+                        Log::info('[SMPL] Entity schema seeded successfully ('.$created.' items created)');
+                    } else {
+                        Log::error('[SMPL] Entity schema incomplete — SMPL_STUDY not found, will retry on next boot');
+                    }
                 } catch (\Throwable $e) {
                     Log::error('[SMPL] seedEntitySchema failed: '.$e->getMessage().' in '.$e->getFile().':'.$e->getLine());
                 }
