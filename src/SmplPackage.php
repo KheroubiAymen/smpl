@@ -31,7 +31,7 @@ class SmplPackage extends PackageInstaller
             ]);
     }
 
-    private const SYNC_VERSION = '2.3.7';
+    private const SYNC_VERSION = '2.3.8';
 
     public function afterBoot(): void
     {
@@ -40,38 +40,51 @@ class SmplPackage extends PackageInstaller
 
     private function autoSync(): void
     {
-        $hash     = self::SYNC_VERSION.'_'.md5_file(__DIR__.'/../resources/script.js');
-        $flagFile = storage_path('app/smpl_synced_'.$hash);
+        $v          = self::SYNC_VERSION;
+        $scriptHash = md5_file(__DIR__.'/../resources/script.js');
+        $schemaFlag = storage_path("app/smpl_schema_{$v}");
+        $routeFlag  = storage_path("app/smpl_routes_{$v}_{$scriptHash}");
 
-        if (file_exists($flagFile)) {
+        if (file_exists($schemaFlag) && file_exists($routeFlag)) {
             return;
         }
 
-        app()->booted(function () use ($flagFile) {
-            $routesOk = false;
-
-            try {
-                $this->seedUserRoutes();
-                $routesOk = true;
-            } catch (\Throwable $e) {
-                Log::error('[SMPL] seedUserRoutes failed: '.$e->getMessage().' in '.$e->getFile().':'.$e->getLine());
+        app()->booted(function () use ($schemaFlag, $routeFlag) {
+            if (!file_exists($schemaFlag)) {
+                try {
+                    (new SmplSchemaSeeder())->seed();
+                    touch($schemaFlag);
+                    Log::info('[SMPL] Entity schema seeded successfully');
+                } catch (\Throwable $e) {
+                    Log::error('[SMPL] seedEntitySchema failed: '.$e->getMessage().' in '.$e->getFile().':'.$e->getLine());
+                }
             }
 
-            try {
-                $this->seedCalculations();
-            } catch (\Throwable $e) {
-                Log::warning('[SMPL] seedCalculations skipped (non-critical): '.$e->getMessage());
-            }
+            if (!file_exists($routeFlag)) {
+                $routesOk = false;
+                try {
+                    $this->seedUserRoutes();
+                    $routesOk = true;
+                } catch (\Throwable $e) {
+                    Log::error('[SMPL] seedUserRoutes failed: '.$e->getMessage().' in '.$e->getFile().':'.$e->getLine());
+                }
 
-            try {
-                Artisan::call('marketplace:sync-contributions');
-            } catch (\Throwable $e) {
-                Log::error('[SMPL] marketplace:sync-contributions failed: '.$e->getMessage());
-            }
+                try {
+                    $this->seedCalculations();
+                } catch (\Throwable $e) {
+                    Log::warning('[SMPL] seedCalculations skipped (non-critical): '.$e->getMessage());
+                }
 
-            if ($routesOk) {
-                touch($flagFile);
-                Log::info('[SMPL] autoSync completed — routes installed');
+                try {
+                    Artisan::call('marketplace:sync-contributions');
+                } catch (\Throwable $e) {
+                    Log::error('[SMPL] marketplace:sync-contributions failed: '.$e->getMessage());
+                }
+
+                if ($routesOk) {
+                    touch($routeFlag);
+                    Log::info('[SMPL] Routes and contributions synced');
+                }
             }
         });
     }
