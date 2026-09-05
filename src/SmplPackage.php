@@ -11,7 +11,6 @@ class SmplPackage extends PackageInstaller
     public function configure(Package $package): void
     {
         $package->hasNoConfigFile()
-            ->hasRoutes()
             ->hasMigrations()
             ->hasNoTranslations()
             ->hasModulePlugin([
@@ -32,7 +31,7 @@ class SmplPackage extends PackageInstaller
 
     // Bump this constant whenever a new release ships changed JS/template files.
     // It forces a fresh flag-file name so any stale flag from the previous release is ignored.
-    private const SYNC_VERSION = '2.3.0';
+    private const SYNC_VERSION = '2.3.1';
 
     public function afterBoot(): void
     {

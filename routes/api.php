@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 
+Route::middleware(['auth', 'auth.jwt_roles:AUTHENTICATED_ROLE', 'didata.context_loader'])->group(function () {
 Route::prefix('smpl')->group(function () {
 
     // ─── GET /api/smpl/workflows ─────────────────────────────────────────────
@@ -269,4 +270,5 @@ Route::prefix('smpl')->group(function () {
             'entities'  => $entities,
         ]);
     });
-});
+}); // prefix('smpl')
+}); // middleware
