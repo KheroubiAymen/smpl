@@ -31,7 +31,7 @@ class SmplPackage extends PackageInstaller
 
     // Bump this constant whenever a new release ships changed JS/template files.
     // It forces a fresh flag-file name so any stale flag from the previous release is ignored.
-    private const SYNC_VERSION = '2.3.2';
+    private const SYNC_VERSION = '2.3.3';
 
     public function afterBoot(): void
     {
@@ -52,6 +52,7 @@ class SmplPackage extends PackageInstaller
         // directly would fail because marketplace services are not yet bound.
         app()->booted(function () use ($flagFile) {
             try {
+                Artisan::call('migrate', ['--force' => true]);
                 Artisan::call('marketplace:sync-contributions');
                 touch($flagFile);
             } catch (\Throwable $e) {
