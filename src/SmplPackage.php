@@ -31,7 +31,7 @@ class SmplPackage extends PackageInstaller
             ]);
     }
 
-    private const SYNC_VERSION = '2.3.6';
+    private const SYNC_VERSION = '2.3.7';
 
     public function afterBoot(): void
     {
@@ -48,14 +48,30 @@ class SmplPackage extends PackageInstaller
         }
 
         app()->booted(function () use ($flagFile) {
+            $routesOk = false;
+
+            try {
+                $this->seedUserRoutes();
+                $routesOk = true;
+            } catch (\Throwable $e) {
+                Log::error('[SMPL] seedUserRoutes failed: '.$e->getMessage().' in '.$e->getFile().':'.$e->getLine());
+            }
+
             try {
                 $this->seedCalculations();
-                $this->seedUserRoutes();
-                Artisan::call('marketplace:sync-contributions');
-                touch($flagFile);
-                Log::info('[SMPL] autoSync completed successfully');
             } catch (\Throwable $e) {
-                Log::error('[SMPL] autoSync failed: '.$e->getMessage().' in '.$e->getFile().':'.$e->getLine());
+                Log::warning('[SMPL] seedCalculations skipped (non-critical): '.$e->getMessage());
+            }
+
+            try {
+                Artisan::call('marketplace:sync-contributions');
+            } catch (\Throwable $e) {
+                Log::error('[SMPL] marketplace:sync-contributions failed: '.$e->getMessage());
+            }
+
+            if ($routesOk) {
+                touch($flagFile);
+                Log::info('[SMPL] autoSync completed — routes installed');
             }
         });
     }
@@ -69,18 +85,23 @@ class SmplPackage extends PackageInstaller
         $now   = now();
 
         foreach ($this->calculationDefinitions() as $calc) {
-            if (DB::table($table)->where('name', $calc['name'])->exists()) {
-                continue;
+            try {
+                if (DB::table($table)->where('name', $calc['name'])->exists()) {
+                    continue;
+                }
+                $row = ['name' => $calc['name']];
+                if (in_array('php_script', $cols))         $row['php_script']         = $calc['script'];
+                if (in_array('resource_type', $cols))      $row['resource_type']      = 'entity';
+                if (in_array('execution_stage', $cols))    $row['execution_stage']    = $calc['stage'];
+                if (in_array('active', $cols))             $row['active']             = 0;
+                if (in_array('settings_form_id', $cols))   $row['settings_form_id']   = null;
+                if (in_array('created_at', $cols))         $row['created_at']         = $now;
+                if (in_array('updated_at', $cols))         $row['updated_at']         = $now;
+                DB::table($table)->insert($row);
+                Log::info('[SMPL] Created calculation: '.$calc['name']);
+            } catch (\Throwable $e) {
+                Log::warning('[SMPL] Could not create calculation '.$calc['name'].': '.$e->getMessage());
             }
-            $row = ['name' => $calc['name']];
-            if (in_array('php_script', $cols))      $row['php_script']      = $calc['script'];
-            if (in_array('resource_type', $cols))   $row['resource_type']   = 'entity';
-            if (in_array('execution_stage', $cols)) $row['execution_stage'] = $calc['stage'];
-            if (in_array('active', $cols))          $row['active']          = 0;
-            if (in_array('created_at', $cols))      $row['created_at']      = $now;
-            if (in_array('updated_at', $cols))      $row['updated_at']      = $now;
-            DB::table($table)->insert($row);
-            Log::info('[SMPL] Created calculation: '.$calc['name']);
         }
     }
 
