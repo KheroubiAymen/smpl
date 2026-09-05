@@ -15,7 +15,7 @@ class SmplSchemaSeeder
 
     public function seed(): int
     {
-        $idFieldId = DB::table('field')->where('name', 'id')->where('field_system', 1)->value('id');
+        $idFieldId = DB::table('Field')->where('name', 'id')->where('field_system', 1)->value('id');
         if (!$idFieldId) {
             Log::warning('[SMPL] System id field not found — cannot seed entity schema');
             return 0;
@@ -30,14 +30,14 @@ class SmplSchemaSeeder
         }
 
         foreach ($this->foreignFieldDefinitions() as $def) {
-            $targetId = DB::table('entitytype')->where('name', $def['target'])->value('id');
+            $targetId = DB::table('EntityType')->where('name', $def['target'])->value('id');
             if (!$targetId) continue;
             $this->ensureForeignField($def['name'], $def['label'], $targetId, $def['multiple'] ?? false);
         }
 
         foreach ($this->fieldAttachments() as [$etName, $fieldName]) {
-            $etId    = DB::table('entitytype')->where('name', $etName)->value('id');
-            $fieldId = DB::table('field')->where('name', $fieldName)->value('id');
+            $etId    = DB::table('EntityType')->where('name', $etName)->value('id');
+            $fieldId = DB::table('Field')->where('name', $fieldName)->value('id');
             if ($etId && $fieldId) {
                 $this->attachField($etId, $fieldId);
             }
@@ -51,9 +51,9 @@ class SmplSchemaSeeder
 
     private function ensureEntityType(string $name, string $label, int $ctx, int $idFieldId): void
     {
-        if (DB::table('entitytype')->where('name', $name)->exists()) return;
+        if (DB::table('EntityType')->where('name', $name)->exists()) return;
         try {
-            $etId = DB::table('entitytype')->insertGetId([
+            $etId = DB::table('EntityType')->insertGetId([
                 'name'           => $name,
                 'label'          => $label,
                 'context_id'     => $ctx,
@@ -71,7 +71,7 @@ class SmplSchemaSeeder
                 'updated_at'    => now(),
             ]);
             // Set shown_field_id to id field
-            DB::table('entitytype')->where('id', $etId)->update(['shown_field_id' => $idFieldId]);
+            DB::table('EntityType')->where('id', $etId)->update(['shown_field_id' => $idFieldId]);
             $this->created++;
             Log::info("[SMPL] Created entity type: $name");
         } catch (\Throwable $e) {
@@ -81,20 +81,20 @@ class SmplSchemaSeeder
 
     private function ensureBasicField(string $name, string $label, string $datatype): void
     {
-        if (DB::table('field')->where('name', $name)->exists()) return;
+        if (DB::table('Field')->where('name', $name)->exists()) return;
         try {
-            $subtypeId = DB::table('basicfield')->insertGetId([
+            $subtypeId = DB::table('BasicField')->insertGetId([
                 'datatype'   => $datatype,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
-            DB::table('field')->insert([
+            DB::table('Field')->insert([
                 'name'             => $name,
                 'label'            => $label,
                 'fieldtype'        => 'BASIC',
                 'fieldtype_id'     => $subtypeId,
                 'field_system'     => 0,
-                'tooltip_type'     => 'static',
+                'tooltip_type'     => 'STATIC',
                 'hidden'           => 0,
                 'read_only'        => 0,
                 'sensitive'        => 0,
@@ -112,9 +112,9 @@ class SmplSchemaSeeder
 
     private function ensureForeignField(string $name, string $label, int $targetId, bool $multiple): void
     {
-        if (DB::table('field')->where('name', $name)->exists()) return;
+        if (DB::table('Field')->where('name', $name)->exists()) return;
         try {
-            $subtypeId = DB::table('foreignchoicefield')->insertGetId([
+            $subtypeId = DB::table('ForeignChoiceField')->insertGetId([
                 'target_entitytype_id'    => $targetId,
                 'multiple'                => $multiple ? 1 : 0,
                 'scalable_link_to_entity' => 0,
@@ -122,13 +122,13 @@ class SmplSchemaSeeder
                 'created_at'              => now(),
                 'updated_at'              => now(),
             ]);
-            DB::table('field')->insert([
+            DB::table('Field')->insert([
                 'name'             => $name,
                 'label'            => $label,
                 'fieldtype'        => 'FOREIGN',
                 'fieldtype_id'     => $subtypeId,
                 'field_system'     => 0,
-                'tooltip_type'     => 'static',
+                'tooltip_type'     => 'STATIC',
                 'hidden'           => 0,
                 'read_only'        => 0,
                 'sensitive'        => 0,
@@ -157,8 +157,8 @@ class SmplSchemaSeeder
                 'updated_at'    => now(),
             ]);
         } catch (\Throwable $e) {
-            $etName    = DB::table('entitytype')->where('id', $etId)->value('name') ?? $etId;
-            $fieldName = DB::table('field')->where('id', $fieldId)->value('name') ?? $fieldId;
+            $etName    = DB::table('EntityType')->where('id', $etId)->value('name') ?? $etId;
+            $fieldName = DB::table('Field')->where('id', $fieldId)->value('name') ?? $fieldId;
             Log::warning("[SMPL] Could not attach $fieldName to $etName: " . $e->getMessage());
         }
     }

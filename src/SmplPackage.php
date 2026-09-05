@@ -31,7 +31,7 @@ class SmplPackage extends PackageInstaller
             ]);
     }
 
-    private const SYNC_VERSION = '2.3.9';
+    private const SYNC_VERSION = '2.3.10';
 
     public function afterBoot(): void
     {
@@ -54,7 +54,7 @@ class SmplPackage extends PackageInstaller
                 try {
                     $created = (new SmplSchemaSeeder())->seed();
                     // Verify the key entity type exists before marking schema as done
-                    $schemaReady = DB::table('entitytype')->where('name', 'SMPL_STUDY')->exists();
+                    $schemaReady = DB::table('EntityType')->where('name', 'SMPL_STUDY')->exists();
                     if ($schemaReady) {
                         touch($schemaFlag);
                         Log::info('[SMPL] Entity schema seeded successfully ('.$created.' items created)');
