@@ -257,18 +257,9 @@
       });
     },
     async getRouteURLByName(name) {
-      const routeMap = {
-        'smpl_get_all_workflows':     'smpl/workflows',
-        'smpl_load_workflow':         'smpl/load-workflow',
-        'smpl_get_entity_by_barcode': 'smpl/entity-by-barcode',
-        'smpl_get_samples_by_steps':  'smpl/samples-by-steps',
-        'smpl_get_samples_by_kit':    'smpl/samples-by-kit',
-        'smpl_get_sample_counts':     'smpl/sample-counts',
-        'smpl_generate_id':           'smpl/generate-id',
-      }
-      const base = this.dapp.$axios.defaults.baseURL
+      const base = this.dapp.$axios.defaults.baseURL.replace(/\/$/, '')
       const currentProject = $nuxt.$store.getters['currentUser/getCurrentProject']
-      return `${base}${routeMap[name]}?projectId${currentProject.id ? '=' + currentProject.id : ''}`
+      return `${base}/user-routes-call/${name}?projectId${currentProject.id ? '=' + currentProject.id : ''}`
     },
     async getAllWorkflows(id = null) {
       this.workflows = []
