@@ -9,60 +9,74 @@ return new class extends Migration
     public function up(): void
     {
         foreach ($this->forms() as $def) {
-            if (DB::table('Form')->where('name', $def['name'])->exists()) {
-                continue;
+            $existing = DB::table('Form')->where('name', $def['name'])->first();
+
+            // If the form exists but has no content rows (partial failure from a
+            // previous interrupted run), delete it so we can recreate it cleanly.
+            if ($existing) {
+                $hasDfc = DB::table('DisplayableFormContent')
+                    ->where('parent_type', 'form')
+                    ->where('parent_id', $existing->id)
+                    ->exists();
+                if ($hasDfc) {
+                    continue; // fully created — skip
+                }
+                DB::table('Form')->where('id', $existing->id)->delete();
+                Log::warning("[SMPL] Form '{$def['name']}' existed with no content — deleted for recreation");
             }
 
-            $etId = $def['entitytype']
-                ? DB::table('EntityType')->where('name', $def['entitytype'])->value('id')
-                : null;
+            DB::transaction(function () use ($def) {
+                $etId = $def['entitytype']
+                    ? DB::table('EntityType')->where('name', $def['entitytype'])->value('id')
+                    : null;
 
-            $formId = DB::table('Form')->insertGetId([
-                'name'                  => $def['name'],
-                'label_position'        => $def['label_position'],
-                'label_size'            => $def['label_size'],
-                'with_default_language' => $def['with_default_language'] ? 1 : 0,
-                'can_add_queries'       => $def['can_add_queries'] ? 1 : 0,
-                'entitytype_id'         => $etId,
-                'created_at'            => now(),
-                'updated_at'            => now(),
-            ]);
+                $formId = DB::table('Form')->insertGetId([
+                    'name'                  => $def['name'],
+                    'label_position'        => $def['label_position'],
+                    'label_size'            => $def['label_size'],
+                    'with_default_language' => $def['with_default_language'] ? 1 : 0,
+                    'can_add_queries'       => $def['can_add_queries'] ? 1 : 0,
+                    'entitytype_id'         => $etId,
+                    'created_at'            => now(),
+                    'updated_at'            => now(),
+                ]);
 
-            foreach ($def['contents'] as $c) {
-                $contentId = null;
+                foreach ($def['contents'] as $c) {
+                    $contentId = null;
 
-                if ($c['content_type'] === 'field') {
-                    $contentId = DB::table('Field')->where('name', $c['content'])->value('id');
-                    if (!$contentId) {
-                        Log::warning("[SMPL] Form '{$def['name']}': field '{$c['content']}' not found — skipped");
-                        continue;
+                    if ($c['content_type'] === 'field') {
+                        $contentId = DB::table('Field')->where('name', $c['content'])->value('id');
+                        if (!$contentId) {
+                            Log::warning("[SMPL] Form '{$def['name']}': field '{$c['content']}' not found — skipped");
+                            continue;
+                        }
+                    } elseif ($c['content_type'] === 'form_section') {
+                        $contentId = DB::table('form_section')->insertGetId([
+                            'type'       => $c['section']['type'],
+                            'value'      => $c['section']['value'],
+                            'created_at' => now(),
+                            'updated_at' => now(),
+                        ]);
                     }
-                } elseif ($c['content_type'] === 'form_section') {
-                    $contentId = DB::table('form_section')->insertGetId([
-                        'type'       => $c['section']['type'],
-                        'value'      => $c['section']['value'],
-                        'created_at' => now(),
-                        'updated_at' => now(),
+
+                    DB::table('DisplayableFormContent')->insert([
+                        'parent_type'       => 'form',
+                        'parent_id'         => $formId,
+                        'content_type'      => $c['content_type'],
+                        'content_id'        => $contentId,
+                        'position_row'      => $c['row'],
+                        'position_col'      => $c['col'],
+                        'width'             => $c['width'],
+                        'height'            => $c['height'],
+                        'condition_to_show' => null,
+                        'details'           => json_encode($c['details'] ?? []),
+                        'created_at'        => now(),
+                        'updated_at'        => now(),
                     ]);
                 }
 
-                DB::table('DisplayableFormContent')->insert([
-                    'parent_type'       => 'form',
-                    'parent_id'         => $formId,
-                    'content_type'      => $c['content_type'],
-                    'content_id'        => $contentId,
-                    'position_row'      => $c['row'],
-                    'position_col'      => $c['col'],
-                    'width'             => $c['width'],
-                    'height'            => $c['height'],
-                    'condition_to_show' => null,
-                    'details'           => json_encode($c['details'] ?? []),
-                    'created_at'        => now(),
-                    'updated_at'        => now(),
-                ]);
-            }
-
-            Log::info("[SMPL] Created form: {$def['name']}");
+                Log::info("[SMPL] Created form: {$def['name']}");
+            });
         }
     }
 
