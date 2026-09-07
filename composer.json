@@ -1,5 +1,5 @@
 {
-    "name": "swissdidata/smpl",
+    "name": "swissdidata/smpl-v2",
     "description": "SMPL — Sample tracking workflow plugin for DiData",
     "require": {
         "didata/installer": "@dev"
