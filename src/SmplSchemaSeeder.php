@@ -43,6 +43,8 @@ class SmplSchemaSeeder
             }
         }
 
+        $this->updateShownFields();
+
         Log::info('[SMPL] Entity schema seeding completed — ' . $this->created . ' items created');
         return $this->created;
     }
@@ -432,5 +434,39 @@ class SmplSchemaSeeder
             ['SMPL_CONTAINER_TYPE', 'smpl_container_volume'],
             ['SMPL_CONTAINER_TYPE', 'smpl_container_additive'],
         ];
+    }
+
+    private function updateShownFields(): void
+    {
+        // After all fields are attached, point each entity type's shown_field_id
+        // to a meaningful field so entities display their label/id instead of a number.
+        $mappings = [
+            'SMPL_STUDY'          => 'smpl_label',
+            'SMPL_STATUS'         => 'smpl_label',
+            'SMPL_KIT_STATUS'     => 'smpl_label',
+            'SMPL_EVENT_TYPE'     => 'smpl_label',
+            'SMPL_ID_GENERATOR'   => 'smpl_id_generator_mask',
+            'SMPL_WORKFLOW'       => 'smpl_label',
+            'SMPL_WORKFLOW_LINE'  => 'smpl_label',
+            'SMPL_WORKFLOW_STEP'  => 'smpl_label',
+            'SMPL_CASE_TYPE'      => 'smpl_label',
+            'SMPL_SUBJECT'        => 'smpl_id',
+            'SMPL_CASE'           => 'smpl_id',
+            'SMPL_KIT'            => 'smpl_id',
+            'SMPL_SAMPLE'         => 'smpl_id',
+            'SMPL_EVENT'          => 'smpl_event_start_time',
+            'SMPL_CREATION'       => 'smpl_workflow_line_fk',
+            'SMPL_SAMPLE_TYPE'    => 'smpl_label',
+            'SMPL_CONTAINER_TYPE' => 'smpl_label',
+        ];
+
+        foreach ($mappings as $etName => $fieldName) {
+            $etId    = DB::table('EntityType')->where('name', $etName)->value('id');
+            $fieldId = DB::table('Field')->where('name', $fieldName)->value('id');
+            if ($etId && $fieldId) {
+                DB::table('EntityType')->where('id', $etId)->update(['shown_field_id' => $fieldId]);
+                Log::info("[SMPL] shown_field_id updated: $etName → $fieldName");
+            }
+        }
     }
 }
