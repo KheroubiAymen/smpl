@@ -183,6 +183,8 @@ class SmplSchemaSeeder
             ['name' => 'SMPL_SAMPLE',         'label' => 'Sample',        'context' => 1],
             ['name' => 'SMPL_EVENT',          'label' => 'Event',         'context' => 1],
             ['name' => 'SMPL_CREATION',       'label' => 'Creation',      'context' => 1],
+            ['name' => 'SMPL_SAMPLE_TYPE',    'label' => 'Sample Type',   'context' => 1],
+            ['name' => 'SMPL_CONTAINER_TYPE', 'label' => 'Container Type','context' => 1],
         ];
     }
 
@@ -228,7 +230,28 @@ class SmplSchemaSeeder
             ['name' => 'smpl_subject_id',                 'label' => 'Subject ID',          'datatype' => 'SHORT_TEXT'],
             ['name' => 'smpl_kit_is_real',                'label' => 'Is Real Kit',         'datatype' => 'BOOL'],
             ['name' => 'smpl_event_start_time',           'label' => 'Event Start Time',    'datatype' => 'DATETIME'],
-            ['name' => 'smpl_barcodes',                   'label' => 'Barcodes',            'datatype' => 'LONG_TEXT'],
+            ['name' => 'smpl_barcodes',                          'label' => 'Barcodes',                    'datatype' => 'LONG_TEXT'],
+            ['name' => 'smpl_description',                       'label' => 'Description',                 'datatype' => 'LONG_TEXT'],
+            ['name' => 'smpl_consumed_volume',                   'label' => 'Consumed Volume',             'datatype' => 'DECIMAL_NUMBER'],
+            ['name' => 'smpl_volume_unit',                       'label' => 'Volume Unit',                 'datatype' => 'SHORT_TEXT'],
+            ['name' => 'smpl_centrifugation_force',              'label' => 'Centrifugation Force',        'datatype' => 'DECIMAL_NUMBER'],
+            ['name' => 'smpl_centrifugation_brake',              'label' => 'Centrifugation Brake',        'datatype' => 'SHORT_TEXT'],
+            ['name' => 'smpl_event_temp',                        'label' => 'Temperature',                 'datatype' => 'SHORT_TEXT'],
+            ['name' => 'smpl_event_duration',                    'label' => 'Duration (min)',              'datatype' => 'WHOLE_NUMBER'],
+            ['name' => 'smpl_collection_department',             'label' => 'Department',                  'datatype' => 'SHORT_TEXT'],
+            ['name' => 'smpl_collection_service',                'label' => 'Service',                     'datatype' => 'SHORT_TEXT'],
+            ['name' => 'smpl_collection_special_conditions',     'label' => 'Special Conditions',          'datatype' => 'SHORT_TEXT'],
+            ['name' => 'smpl_collection_special_conditions_other','label' => 'Special Conditions Other',   'datatype' => 'SHORT_TEXT'],
+            ['name' => 'smpl_distribution_project_destination',  'label' => 'Project Destination',        'datatype' => 'SHORT_TEXT'],
+            ['name' => 'smpl_event_reason',                      'label' => 'Reason',                     'datatype' => 'LONG_TEXT'],
+            ['name' => 'smpl_storage_temp',                      'label' => 'Storage Temperature',        'datatype' => 'SHORT_TEXT'],
+            ['name' => 'smpl_destruction_reason',                'label' => 'Destruction Reason',         'datatype' => 'LONG_TEXT'],
+            ['name' => 'smpl_workflow_line_suffix',              'label' => 'Line Suffix',                'datatype' => 'SHORT_TEXT'],
+            ['name' => 'smpl_container_volume',                  'label' => 'Container Volume',           'datatype' => 'DECIMAL_NUMBER'],
+            ['name' => 'smpl_content_volume',                    'label' => 'Content Volume',             'datatype' => 'DECIMAL_NUMBER'],
+            ['name' => 'smpl_container_type',                    'label' => 'Container Type',             'datatype' => 'SHORT_TEXT'],
+            ['name' => 'smpl_container_additive',                'label' => 'Additive',                   'datatype' => 'SHORT_TEXT'],
+            ['name' => 'smpl_sample_type',                       'label' => 'Sample Type',                'datatype' => 'SHORT_TEXT'],
         ];
     }
 
@@ -270,6 +293,8 @@ class SmplSchemaSeeder
             ['name' => 'smpl_last_analysis',               'label' => 'Last Analysis',    'target' => 'SMPL_EVENT',         'multiple' => false],
             ['name' => 'smpl_first_processing',            'label' => 'First Processing', 'target' => 'SMPL_EVENT',         'multiple' => false],
             ['name' => 'smpl_last_processing',             'label' => 'Last Processing',  'target' => 'SMPL_EVENT',         'multiple' => false],
+            ['name' => 'smpl_container_type_fk',           'label' => 'Container Type',   'target' => 'SMPL_CONTAINER_TYPE','multiple' => false],
+            ['name' => 'smpl_sample_type_fk',              'label' => 'Sample Type',      'target' => 'SMPL_SAMPLE_TYPE',  'multiple' => false],
         ];
     }
 
@@ -398,6 +423,14 @@ class SmplSchemaSeeder
             ['SMPL_CREATION',      'smpl_workflow_line_fk'],
             ['SMPL_CREATION',      'smpl_workflow_line_quantity'],
             ['SMPL_CREATION',      'smpl_barcodes'],
+
+            ['SMPL_SAMPLE_TYPE',    'smpl_label'],
+            ['SMPL_SAMPLE_TYPE',    'smpl_sample_type'],
+
+            ['SMPL_CONTAINER_TYPE', 'smpl_label'],
+            ['SMPL_CONTAINER_TYPE', 'smpl_container_type'],
+            ['SMPL_CONTAINER_TYPE', 'smpl_container_volume'],
+            ['SMPL_CONTAINER_TYPE', 'smpl_container_additive'],
         ];
     }
 }
