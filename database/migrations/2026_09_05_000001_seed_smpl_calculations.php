@@ -1,6 +1,8 @@
 <?php
 
 use Illuminate\Database\Migrations\Migration;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 return new class extends Migration
 {
@@ -99,18 +101,32 @@ PHP,
 
     public function up(): void
     {
+        // Relax strict mode for this session so the NOT-NULL settings_form_id
+        // column (which has no DEFAULT in some DiData versions) doesn't block the insert.
+        $originalMode = DB::selectOne('SELECT @@SESSION.sql_mode AS mode')->mode ?? '';
+        $relaxed = preg_replace('/,?STRICT_(TRANS|ALL)_TABLES/', '', $originalMode);
+        DB::statement("SET SESSION sql_mode = " . DB::getPdo()->quote($relaxed));
+
         foreach ($this->calculations as $calc) {
-            $exists = \App\Models\Task::where('name', $calc['name'])->first();
-            if ($exists) {
-                continue;
+            try {
+                if (\App\Models\Task::where('name', $calc['name'])->exists()) {
+                    continue;
+                }
+                \App\Models\Task::create([
+                    'name'            => $calc['name'],
+                    'resource_type'   => 'entity',
+                    'php_script'      => $calc['script'],
+                    'active'          => false,
+                    'execution_stage' => $calc['execution_stage'],
+                ]);
+            } catch (\Throwable $e) {
+                Log::warning('[SMPL] Could not create calculation "' . $calc['name'] . '": ' . $e->getMessage());
             }
-            \App\Models\Task::create([
-                'name'            => $calc['name'],
-                'resource_type'   => 'entity',
-                'php_script'      => $calc['script'],
-                'active'          => false,
-                'execution_stage' => $calc['execution_stage'],
-            ]);
+        }
+
+        // Restore the original SQL mode.
+        if ($originalMode !== '') {
+            DB::statement("SET SESSION sql_mode = " . DB::getPdo()->quote($originalMode));
         }
     }
 

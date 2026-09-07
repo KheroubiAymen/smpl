@@ -4,8 +4,6 @@ namespace SwissDidata\Smpl;
 
 use Didata\Packages\installer\Package;
 use Didata\Packages\installer\PackageInstaller;
-use Illuminate\Support\Facades\Artisan;
-use Illuminate\Support\Facades\Log;
 
 class SmplPackage extends PackageInstaller
 {
@@ -29,14 +27,5 @@ class SmplPackage extends PackageInstaller
                 'template'  => __DIR__.'/../resources/config-template.xml',
                 'js'        => __DIR__.'/../resources/config-script.js',
             ]);
-    }
-
-    public function afterBoot(): void
-    {
-        try {
-            Artisan::call('marketplace:sync-contributions');
-        } catch (\Throwable $e) {
-            Log::error('[SMPL] marketplace:sync-contributions failed: ' . $e->getMessage());
-        }
     }
 }
