@@ -44,6 +44,7 @@ class SmplSchemaSeeder
         }
 
         $this->updateShownFields();
+        $this->updateForeignChoiceShownFields();
 
         Log::info('[SMPL] Entity schema seeding completed — ' . $this->created . ' items created');
         return $this->created;
@@ -434,6 +435,64 @@ class SmplSchemaSeeder
             ['SMPL_CONTAINER_TYPE', 'smpl_container_volume'],
             ['SMPL_CONTAINER_TYPE', 'smpl_container_additive'],
         ];
+    }
+
+    private function updateForeignChoiceShownFields(): void
+    {
+        $mappings = [
+            // → smpl_label
+            'smpl_study_fk'                       => 'smpl_label',
+            'smpl_workflow_fk'                    => 'smpl_label',
+            'smpl_workflow_line_fk'               => 'smpl_label',
+            'smpl_workflow_lines_fk'              => 'smpl_label',
+            'smpl_workflow_step_fk'               => 'smpl_label',
+            'smpl_workflow_step_batch_fk'         => 'smpl_label',
+            'smpl_workflow_step_goto_fk'          => 'smpl_label',
+            'smpl_event_type_fk'                  => 'smpl_label',
+            'smpl_sample_status_fk'               => 'smpl_label',
+            'smpl_workflow_step_status_change_fk' => 'smpl_label',
+            'smpl_kit_status_fk'                  => 'smpl_label',
+            'smpl_case_type_fk'                   => 'smpl_label',
+            'smpl_case_type_workflow_fk'          => 'smpl_label',
+            'smpl_container_type_fk'              => 'smpl_label',
+            'smpl_sample_type_fk'                 => 'smpl_label',
+            // → smpl_id
+            'smpl_subject_fk'                     => 'smpl_id',
+            'smpl_case_fk'                        => 'smpl_id',
+            'smpl_kit_fk'                         => 'smpl_id',
+            'smpl_sample_fk'                      => 'smpl_id',
+            'smpl_samples_fk'                     => 'smpl_id',
+            // → smpl_id_generator_mask
+            'smpl_id_gen_fk'                      => 'smpl_id_generator_mask',
+            'smpl_subject_id_gen_fk'              => 'smpl_id_generator_mask',
+            'smpl_case_id_gen_fk'                 => 'smpl_id_generator_mask',
+            'smpl_kit_id_gen_fk'                  => 'smpl_id_generator_mask',
+            // → smpl_event_start_time
+            'smpl_events_fk'                      => 'smpl_event_start_time',
+            'smpl_first_reception'                => 'smpl_event_start_time',
+            'smpl_last_reception'                 => 'smpl_event_start_time',
+            'smpl_first_transportation'           => 'smpl_event_start_time',
+            'smpl_last_transportation'            => 'smpl_event_start_time',
+            'smpl_first_storage'                  => 'smpl_event_start_time',
+            'smpl_last_storage'                   => 'smpl_event_start_time',
+            'smpl_first_centrifugation'           => 'smpl_event_start_time',
+            'smpl_last_centrifugation'            => 'smpl_event_start_time',
+            'smpl_first_analysis'                 => 'smpl_event_start_time',
+            'smpl_last_analysis'                  => 'smpl_event_start_time',
+            'smpl_first_processing'               => 'smpl_event_start_time',
+            'smpl_last_processing'                => 'smpl_event_start_time',
+        ];
+
+        foreach ($mappings as $fieldName => $shownFieldName) {
+            $fieldId      = DB::table('Field')->where('name', $fieldName)->value('id');
+            $shownFieldId = DB::table('Field')->where('name', $shownFieldName)->value('id');
+            if ($fieldId && $shownFieldId) {
+                DB::table('ForeignChoiceField')
+                    ->where('id', $fieldId)
+                    ->update(['shown_field_id' => $shownFieldId]);
+                Log::info("[SMPL] ForeignChoiceField shown_field updated: $fieldName → $shownFieldName");
+            }
+        }
     }
 
     private function updateShownFields(): void
